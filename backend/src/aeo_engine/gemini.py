@@ -10,7 +10,7 @@ from google import genai
 from google.genai import types
 
 from aeo_engine.config import settings
-from aeo_engine.models import GeminiResponse
+from aeo_engine.models import Competitor, GeminiResponse
 
 DEFAULT_MODEL = "gemini-3.6-flash"
 
@@ -29,20 +29,20 @@ async def call_gemini(
 ) -> GeminiResponse:
     """Make a single async call to Gemini and return the raw response.
 
-    Uses asyncio.to_thread to run the synchronous google-genai client
-    without blocking the event loop.
+    Uses Chat API (recommended over Models.generate_content).
+    Runs in a thread to avoid blocking the event loop.
     """
 
     def _sync_call() -> str:
         client = _get_client()
-        response = client.models.generate_content(
+        chat = client.chats.create(
             model=model,
-            contents=prompt,
             config=types.GenerateContentConfig(
                 temperature=0.7,
                 max_output_tokens=1024,
             ),
         )
+        response = chat.send_message(prompt)
         return response.text or ""
 
     raw_text = await asyncio.to_thread(_sync_call)
@@ -76,14 +76,14 @@ async def resolve_brand_categories(brand: str) -> list[str]:
 
     def _sync_call() -> str:
         client = _get_client()
-        response = client.models.generate_content(
+        chat = client.chats.create(
             model=DEFAULT_MODEL,
-            contents=prompt,
             config=types.GenerateContentConfig(
                 temperature=0.3,
                 max_output_tokens=128,
             ),
         )
+        response = chat.send_message(prompt)
         return response.text or ""
 
     raw = await asyncio.to_thread(_sync_call)
@@ -91,6 +91,53 @@ async def resolve_brand_categories(brand: str) -> list[str]:
     # Parse comma-separated response, strip whitespace, filter empties
     categories = [c.strip().strip('"').strip("'") for c in raw.split(",")]
     return [c for c in categories if c]
+
+
+async def resolve_brand_competitors(
+    brand: str, category: str
+) -> list[Competitor]:
+    """Ask Gemini who the main competitors are for a brand in a category.
+
+    Returns a list of Competitor objects with name and reason.
+    Parses line-based format: "BrandName: brief reason"
+    """
+
+    prompt = (
+        f"Competitors of {brand} in {category}:\n"
+        "1. Name: reason\n2. Name: reason\n3. Name: reason\n4. Name: reason"
+    )
+
+    def _sync_call() -> str:
+        client = _get_client()
+        chat = client.chats.create(
+            model=DEFAULT_MODEL,
+            config=types.GenerateContentConfig(
+                temperature=0.3,
+                max_output_tokens=1024,
+            ),
+        )
+        response = chat.send_message(prompt)
+        return response.text or ""
+
+    raw = await asyncio.to_thread(_sync_call)
+
+    competitors = []
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        # Remove list markers: "1. ", "- ", "* "
+        line = line.lstrip("-").lstrip("*").strip()
+        if line and line[0].isdigit() and ". " in line:
+            line = line.split(". ", 1)[1]
+        if ":" in line:
+            parts = line.split(":", 1)
+            name = parts[0].strip().strip('"').strip("'").replace("**", "")
+            reason = parts[1].strip().strip('"').strip("'").rstrip(".").replace("**", "")
+            if name and reason and len(name) < 50:
+                competitors.append(Competitor(name=name, reason=reason))
+
+    return competitors
 
 
 async def run_parallel_sampling(

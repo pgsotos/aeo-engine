@@ -14,8 +14,11 @@ async def test_call_gemini_returns_response() -> None:
     mock_response.text = "Linear is the best project management tool."
 
     with patch("aeo_engine.gemini._get_client") as mock_get:
+        mock_chat = MagicMock()
+        mock_chat.send_message.return_value = mock_response
+
         mock_client = MagicMock()
-        mock_client.models.generate_content.return_value = mock_response
+        mock_client.chats.create.return_value = mock_chat
         mock_get.return_value = mock_client
 
         result = await call_gemini(
@@ -30,3 +33,7 @@ async def test_call_gemini_returns_response() -> None:
         assert result.prompt_id == "direct-01"
         assert result.run_index == 1
         assert result.model_id == "gemini-3.6-flash"
+
+        # Verify Chat API was used, not Models API
+        mock_client.chats.create.assert_called_once()
+        mock_chat.send_message.assert_called_once_with("What is the best PM tool?")
