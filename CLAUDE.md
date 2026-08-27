@@ -1,122 +1,87 @@
 # CLAUDE.md — aeo-engine
 
-Guidance for Claude Code agents working in this monorepo. These rules override
+Guidance for Claude Code agents working in this project. These rules override
 default behavior.
 
 ## What this project is
 
-`aeo-engine` is a monitoring, auditing and analysis platform for **AEO
-(Answer Engine Optimization)**. It measures how often a brand is the **direct
-answer** produced by generative answer engines (Google Gemini Pro / Flash),
-not broad web visibility (GEO).
+`aeo-engine` measures how often **Linear** is the **direct answer** produced by
+**Google Gemini** when users ask about project management tools. It is not broad
+web visibility (GEO) — it is Answer Engine Optimization (AEO).
 
-### Response classification (Ranker Agent)
+### Response classification
 
 Every model answer about a brand is classified into exactly one bucket:
 
 | Bucket | Meaning |
 |---|---|
-| `Direct Winner` | The brand is the #1 solution or recommendation generated for the user. |
-| `Alternative Mention` | The brand appears only as a secondary option or as part of a list. |
-| `Omitted/Lost` | The brand is absent; a competitor takes the direct answer. |
+| `Direct Winner` | The brand is the #1 solution or recommendation. |
+| `Alternative Mention` | The brand appears as a secondary option or in a list. |
+| `Omitted` | The brand is absent; a competitor takes the direct answer. |
 
-The primary metric is **Direct Answer Win Rate**: share of runs classified as
-`Direct Winner`, reported with a confidence interval over N runs.
+Primary metric: **Direct Answer Win Rate** with a Wilson score confidence
+interval over N independent runs.
 
 ## Analytical rules (non-negotiable)
 
 1. **Multiple parallel sampling.** A single API call is not a metric. Every
-   prompt is run N independent times (default N = 8) in parallel so confidence
-   intervals can be computed.
-2. **Absolute immutability.** The raw JSON (`raw_response`) returned by Gemini is
-   never mutated. It is stored verbatim in Postgres. Agents interpret over
-   in-memory copies or reads; metrics are pure functions over the raw responses.
-3. **Grounding and causal attribution.** The Source Auditor maps which search the
-   engine actually ran (`google_search_call.queries`) and which text range
-   (`start_index` to `end_index`) each cited URL justifies.
-4. **Competitive symmetry.** Brand evaluations always include the full category.
-   Prompts are used in inverted pairs (e.g. "Linear vs Jira" and "Jira vs
-   Linear") to isolate positional bias.
+   prompt is run N independent times (default N = 8) so confidence intervals
+   can be computed.
+2. **Absolute immutability.** The raw text returned by Gemini is never mutated.
+   Stored verbatim in Supabase. Metrics are pure functions over raw responses.
+3. **Competitive symmetry.** Prompts are used in inverted pairs (e.g. "Linear
+   vs Jira" and "Jira vs Linear") to isolate positional bias.
+4. **Multi-dimension analysis.** Prompts span 5 types: direct, comparative,
+   use_case, feature, negative. Win Rate is reported per type.
 
 ## Tech stack
 
 | Layer | Choice |
 |---|---|
-| Frontend | Next.js, managed with **Bun** — `frontend/` |
-| Backend | Python 3.12+, managed with **uv** — FastStream microservices — `backend/` |
-| Broker / cache | Redis (Pub/Sub for inter-agent messaging) |
-| OLTP | Supabase / PostgreSQL (users, config, immutable `raw_response` logs) |
-| OLAP | ClickHouse (batch ingestion for derived metrics) |
-| Orchestration | Temporal.io (durable workflows, parallel sampling, retries) |
+| Frontend | Next.js + Bun — `frontend/` |
+| Backend | Python 3.12 + FastAPI + uv — `backend/` |
+| Database | Supabase (hosted Postgres) |
+| AI Engine | Gemini API (google-genai) |
 
 ## Coding rules
 
 ### Python (`backend/`)
 
-- Manage everything with `uv` (`uv sync`, `uv run`, `uv add`). Never call `pip`
-  or `python -m venv` directly.
-- **Strict typing.** `from __future__ import annotations`, full annotations on
-  every function, `mypy --strict` clean. No bare `Any` without justification.
-- **async/await everywhere.** All I/O (DB, HTTP, broker, Temporal activities) is
-  async. No blocking calls inside the event loop.
+- Manage with `uv` (`uv sync`, `uv run`, `uv add`). Never `pip`.
+- Strict typing, full annotations, no unjustified `Any`.
+- async/await for all I/O. No blocking calls in the event loop.
 - Ruff for lint + format. Line length 100.
-- Metrics code is **pure functions** over `raw_response`. No hidden state, no
-  mutation of inputs.
-- Temporal: deterministic workflow code only; all I/O lives in activities.
+- Metrics code is **pure functions**. No hidden state, no input mutation.
+- Tests: `uv run pytest` from `backend/`.
 
 ### Frontend (`frontend/`)
 
-- Bun for install, scripts and the runtime (`bun install`, `bun run`).
+- Bun for install and runtime (`bun install`, `bun run`).
 - TypeScript strict mode. No `any`.
-- Server Components by default; client components only when interactivity needs
-  them.
+- Server Components by default; client components only when needed.
+- Frontend renders metrics from the API — it never calculates them.
 
 ### General
 
-- Conventional Commits only. No AI attribution / `Co-Authored-By` lines.
-- Gradual, atomic commits per milestone — never a single commit at the end.
-- English for all code, comments, identifiers, docs, tests and commit messages.
+- Conventional Commits only. No AI attribution.
+- Gradual, atomic commits — never a single commit at the end.
+- English for all code, comments, identifiers, docs, and commits.
 
-### Branch and PR governance (ADR-008)
+## Agent teams
 
-- **No direct commits to `main`.** Every milestone or sub-task runs on a
-  dedicated branch: `feature/hito-<N>-<slug>` (e.g.
-  `feature/hito-2-infrastructure-temporal`).
-- Merge to `main` is gated: `team-lead` audits the branch (atomic Conventional
-  Commits, correct per-agent file ownership, scope matches the milestone) and
-  `qa-validator-agent` approves (acceptance criteria met, tests pass). Only then
-  does `team-lead` merge.
+Two specialist agents for delegated work. See `.claude/agents/team/`.
 
-## File ownership (Agent Teams)
-
-Each agent writes **only** inside its directory. See
-`.claude/agents/team/` for the full definitions.
-
-| Agent | Writes in |
-|---|---|
-| `team-lead` | nothing (coordination, review, integration only) |
-| `backend-agent` | `backend/` (except `backend/db/`) |
-| `database-agent` | `backend/db/`, `migrations/`, Supabase & ClickHouse schemas |
-| `frontend-agent` | `frontend/` |
-| `qa-validator-agent` | `tests/` only — read-only everywhere else |
-
-## Roadmap
-
-Milestone 1 (this commit): monorepo structure, governance docs, agent team
-setup. Milestones 2–6 and the innovation modules (adversarial simulation,
-predictive forecasting, cross-lingual consistency) are tracked in
-`DECISIONS.md`.
+| Agent | Writes in | Role |
+|---|---|---|
+| `backend-agent` | `backend/` | Python, FastAPI, Gemini, metrics |
+| `frontend-agent` | `frontend/` | Next.js, TypeScript, dashboard |
 
 ## DECISIONS.md is mandatory
 
-`DECISIONS.md` is a full decision & scope log, not just ADRs. Record there,
-without exception:
+Record decisions, assumptions, and exclusions in `DECISIONS.md`:
 
-- **Decided** — architecture, stack, sampling and analytical methodology (ADR).
-- **Assumed** — category brands (Linear / Jira / …), LLM variance handling and
-  its statistical limits (ASM).
-- **Left out** — product scope cut for time, extra answer engines, long-horizon
-  time series (OOS).
+- **Decided** — architecture, stack, analytical methodology.
+- **Assumed** — brand set, LLM variance handling, statistical limits.
+- **Left out** — scope cut, excluded features, deferred work.
 
-Any agent making or discovering such a choice adds an entry before finishing the
-task.
+Any agent making or discovering such a choice adds an entry before finishing.
