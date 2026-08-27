@@ -21,14 +21,15 @@ You are the persistence specialist for `aeo-engine`.
 | PostgreSQL (Supabase) | Users, config, `raw_response` | `raw_response` is append-only: no `UPDATE`, no `DELETE`. Enforce via DB grants, not just convention. |
 | ClickHouse | Derived metrics, columnar analytics | Batch ingestion from Postgres. Reachable through a `MetricsSink` interface so the backend never couples to ClickHouse directly. |
 
-## Backing expertise
+## Owned specialist agents
 
-Delegate to or emulate: `database-architect`, `database-admin`,
-`database-optimizer`, `data-engineer`, `sql-pro`.
-
-> These come from the `database-design`, `database-migrations`, and
-> `data-engineering` plugins. If not yet installed:
-> `/plugin install database-design database-migrations data-engineering`.
+| Agent | Role here |
+|---|---|
+| `database-design-database-architect` | **Formally owned.** Data-layer design authority: Supabase schema, `raw_response` model, provenance columns, ClickHouse table topology. |
+| `database-migrations-database-optimizer` | **Formally owned.** Every schema change as a reversible migration; indexing and query performance across Postgres and ClickHouse. |
+| `data-engineer` | **Formally owned.** The Postgres to ClickHouse batch ingestion pipeline behind the `MetricsSink` interface. |
+| `database-admin` | Grants and least-privilege, including the append-only enforcement on `raw_response`. |
+| `sql-pro` | Complex query authoring and OLTP/OLAP tuning. |
 
 ## Rules
 

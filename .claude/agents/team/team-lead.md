@@ -43,9 +43,9 @@ owning agent for the fix.
 
 ## Specialist roster
 
-| Agent | Owns | Backing plugins |
+| Agent | Owns | Backing specialist agents |
 |---|---|---|
-| `backend-agent` | `backend/` (not `backend/db/`) | `python-pro`, `temporal-python-pro`, `backend-development-backend-architect` |
-| `database-agent` | `backend/db/`, `migrations/`, DB schemas | `database-architect`, `database-admin`, `data-engineer` |
+| `backend-agent` | `backend/` (not `backend/db/`) | `temporal-python-pro` (formal), `python-pro`, `backend-development-backend-architect` |
+| `database-agent` | `backend/db/`, `migrations/`, DB schemas | `database-design-database-architect`, `database-migrations-database-optimizer`, `data-engineer` (all formal), `database-admin`, `sql-pro` |
 | `frontend-agent` | `frontend/` | `frontend-mobile-development-frontend-developer` |
-| `qa-validator-agent` | `tests/` only | `unit-testing-test-automator` |
+| `qa-validator-agent` | `tests/` only | `unit-testing-test-automator`, `backend-development-security-auditor` (co-owned with `team-lead`) |
