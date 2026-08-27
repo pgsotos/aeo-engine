@@ -125,3 +125,12 @@ class GroundingSupport(BaseModel):
     segment_start: int
     segment_end: int
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class SourceImpactRow(BaseModel):
+    """Derived-on-read impact of a cited domain over the focus brand's DWR."""
+
+    domain: str
+    citations: int  # number of source rows citing this domain
+    direct_wins: int  # responses citing the domain where the focus brand was a Direct Winner
+    impact_ratio: float  # direct_wins / citations

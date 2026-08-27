@@ -6,7 +6,13 @@ segments. Grounding presence is stochastic, so None/empty inputs are
 first-class cases.
 """
 
-from aeo_engine.sources import extract_domain, extract_sources, extract_supports
+from aeo_engine.models import Classification, ClassificationResult, GroundingSource
+from aeo_engine.sources import (
+    compute_source_impact,
+    extract_domain,
+    extract_sources,
+    extract_supports,
+)
 
 # Realistic grounding payload: web.uri is an opaque redirect token, the real
 # attribution signal lives in grounding_chunks[].web.title.
@@ -150,3 +156,89 @@ def test_extract_supports_skips_segmentless_and_keeps_unlinked() -> None:
     assert supports[0].source_chunk_index == 0
     assert (supports[1].segment_start, supports[1].segment_end) == (20, 30)
     assert supports[1].source_chunk_index is None
+
+
+# ── compute_source_impact ────────────────────────────────────────────────────
+
+
+def _source(response_id: str, domain: str) -> GroundingSource:
+    return GroundingSource(
+        response_id=response_id,
+        web_title=f"{domain} article",
+        domain=domain,
+        chunk_index=0,
+    )
+
+
+def _classification(response_id: str, classification: Classification) -> ClassificationResult:
+    return ClassificationResult(
+        response_id=response_id,
+        brand="Linear",
+        classification=classification,
+    )
+
+
+def test_source_impact_correlates_domains_with_direct_wins() -> None:
+    """Impact = how often a cited domain co-occurs with the focus brand being a
+    Direct Winner. `response_map` bridges source response ids to classification
+    response ids (kept non-identity here to prove the bridge is honored)."""
+    sources = [
+        _source("src-1", "linear.app"),  # cited in a winning response
+        _source("src-1", "g2.com"),  # cited in the same winning response
+        _source("src-2", "linear.app"),  # cited in a losing response
+    ]
+    classifications = [
+        _classification("cls-1", Classification.DIRECT_WINNER),
+        _classification("cls-2", Classification.ALTERNATIVE_MENTION),
+    ]
+    response_map = {"src-1": "cls-1", "src-2": "cls-2"}
+
+    rows = compute_source_impact(sources, classifications, response_map)
+
+    assert [(r.domain, r.citations, r.direct_wins, r.impact_ratio) for r in rows] == [
+        ("linear.app", 2, 1, 0.5),  # cited in both; won only once
+        ("g2.com", 1, 1, 1.0),  # cited in the winning response only
+    ]
+
+
+def test_source_impact_ranks_by_citations_then_ratio() -> None:
+    """Equal citation counts break ties by impact ratio (descending)."""
+    sources = [
+        _source("r1", "a.com"),
+        _source("r1", "b.com"),
+        _source("r2", "a.com"),  # a.com cited twice: both responses win
+        _source("r3", "b.com"),  # b.com cited twice: wins only once
+    ]
+    classifications = [
+        _classification("r1", Classification.DIRECT_WINNER),
+        _classification("r2", Classification.DIRECT_WINNER),
+        _classification("r3", Classification.OMITTED),
+    ]
+    response_map = {"r1": "r1", "r2": "r2", "r3": "r3"}
+
+    rows = compute_source_impact(sources, classifications, response_map)
+
+    assert [r.domain for r in rows] == ["a.com", "b.com"]
+    assert (rows[0].citations, rows[0].impact_ratio) == (2, 1.0)
+    assert (rows[1].citations, rows[1].impact_ratio) == (2, 0.5)
+
+
+def test_source_impact_excludes_unknown_domains() -> None:
+    """Sources whose domain could not be parsed are excluded from the matrix —
+    an unparseable title carries no attribution signal."""
+    sources = [
+        _source("r1", "linear.app"),
+        _source("r1", ""),  # unknown domain
+    ]
+    classifications = [_classification("r1", Classification.DIRECT_WINNER)]
+    response_map = {"r1": "r1"}
+
+    rows = compute_source_impact(sources, classifications, response_map)
+
+    assert len(rows) == 1
+    assert rows[0].domain == "linear.app"
+
+
+def test_source_impact_empty_inputs() -> None:
+    """No sources, no classifications → empty matrix (never raises)."""
+    assert compute_source_impact([], [], {}) == []

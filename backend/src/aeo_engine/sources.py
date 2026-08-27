@@ -19,7 +19,13 @@ from __future__ import annotations
 
 import re
 
-from aeo_engine.models import GroundingSource, GroundingSupport
+from aeo_engine.models import (
+    Classification,
+    ClassificationResult,
+    GroundingSource,
+    GroundingSupport,
+    SourceImpactRow,
+)
 
 # Best-effort first domain-like token: label.host with a 2+ letter TLD.
 # e.g. "Linear Review 2025 - linear.app" -> "linear.app"; prose without a
@@ -93,3 +99,49 @@ def extract_supports(grounding_metadata: dict | None) -> list[GroundingSupport]:
             )
         )
     return result
+
+
+def compute_source_impact(
+    sources: list[GroundingSource],
+    classifications: list[ClassificationResult],
+    response_map: dict[str, str],
+) -> list[SourceImpactRow]:
+    """Rank cited domains by how often they co-occur with a DIRECT_WINNER.
+
+    Pure function, derived on read — no table. ``response_map`` bridges the
+    response id recorded on sources to the response id used by classifications
+    (identity in the current wiring, kept as an explicit parameter so the join
+    is testable). Classifications are expected to be pre-scoped to the focus
+    brand by the caller. Sources with an unparseable domain or a response id
+    absent from ``response_map`` are excluded (no attribution signal / no
+    correlation possible). Rows sort by citations desc, then impact ratio desc.
+    """
+    winner_responses = {
+        c.response_id
+        for c in classifications
+        if c.classification == Classification.DIRECT_WINNER
+    }
+    by_domain: dict[str, tuple[int, int]] = {}
+    for source in sources:
+        domain = source.domain
+        if not domain:
+            continue  # unknown domain carries no attribution signal
+        if source.response_id not in response_map:
+            continue  # no classification bridge → cannot correlate
+        citations, wins = by_domain.get(domain, (0, 0))
+        citations += 1
+        if response_map[source.response_id] in winner_responses:
+            wins += 1
+        by_domain[domain] = (citations, wins)
+
+    rows = [
+        SourceImpactRow(
+            domain=domain,
+            citations=citations,
+            direct_wins=wins,
+            impact_ratio=wins / citations,
+        )
+        for domain, (citations, wins) in by_domain.items()
+    ]
+    rows.sort(key=lambda r: (-r.citations, -r.impact_ratio))
+    return rows
