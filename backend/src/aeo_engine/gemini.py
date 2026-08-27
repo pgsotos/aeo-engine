@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from google import genai
 from google.genai import types
@@ -52,7 +52,7 @@ async def call_gemini(
         run_index=run_index,
         model_id=model,
         raw_text=raw_text,
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(UTC),
     )
 
 

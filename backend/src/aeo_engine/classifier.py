@@ -74,7 +74,25 @@ def _is_primary_recommendation(raw_text: str, brand: str) -> bool:
         "leading",
         "superior",
     ]
+    # Negative signals that override recommendation detection
+    negative_signals = [
+        "alternative",
+        "however",
+        "but",
+        "although",
+        "while",
+        "instead",
+        "compared to",
+        "not as",
+    ]
+
     has_recommendation_signal = any(kw in window for kw in recommendation_keywords)
+    has_negative_signal = any(ns in window for ns in negative_signals)
+
+    # If there's both a recommendation keyword AND a negative signal,
+    # it's likely an alternative mention, not a primary recommendation
+    if has_recommendation_signal and has_negative_signal:
+        return in_first_portion and not has_negative_signal
 
     return in_first_portion or has_recommendation_signal
 
