@@ -83,3 +83,19 @@ bun run dev              # http://localhost:3000
 
 Read `CLAUDE.md` first. Commits are gradual, atomic, and use Conventional
 Commits. No AI attribution.
+
+### Branching
+
+Git Flow: `main` → `develop` → `feature/<slug>`. Branch from `develop`, PR back
+to `develop`. When `develop` moves ahead, **rebase** your branch
+(`git rebase origin/develop` + `git push --force-with-lease`) — never merge
+`develop` in. See the `git-flow` skill and ADR-013 / ADR-014.
+
+### Secrets
+
+Never commit real credentials. `.env` is git-ignored; only `.env.example`
+(placeholders) is tracked. Backend secrets (`GEMINI_API_KEY`, `SUPABASE_URL`,
+`SUPABASE_KEY`) are set in the Render dashboard. `gitleaks` scans every push and
+PR (`.github/workflows/gitleaks.yml`, config `.gitleaks.toml`); run
+`gitleaks detect` locally before pushing if you want an early check. See
+ADR-015.

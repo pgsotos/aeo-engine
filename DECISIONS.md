@@ -287,6 +287,60 @@ superseded and should be deleted from remote.
 
 ---
 
+## ADR-014 — Feature branches rebase, never merge
+
+**Status:** Accepted
+
+**Context:** Feature branches fell behind `develop` and were caught up with
+`git merge develop`, producing merge commits inside the branch that muddied the
+PR diff. Stacked PRs (`feature/strict-aeo-grounding` on
+`feature/strict-aeo-methodology`) made this worse.
+
+**Decision:** When `develop` moves ahead, a feature branch catches up with
+`git rebase origin/develop` and `git push --force-with-lease` — never
+`git merge develop`. Stacked PRs rebase onto their parent branch the same way.
+Full procedure in the `git-flow` skill.
+
+**Consequences:** Linear history; each PR is a clean diff against `develop`.
+Requires `--force-with-lease` pushes on feature branches (safe: only the branch
+author works on them). `main` and `develop` are never force-pushed.
+
+---
+
+## ADR-015 — Secret scanning and `.gitignore` hygiene
+
+**Status:** Accepted
+
+**Context:** Multiple AI agents and the developer edit tracked files. Live
+credentials in play: Gemini API key, Supabase anon + service keys, Render API
+key. A committed-and-pushed secret is expensive to undo (rotate + rewrite
+history + force-push). A full audit on 2026-08-27 (`gitleaks` over all branches
+and history, plus manual `git grep`) found **no secret ever committed** — only
+placeholder `.env.example` templates.
+
+**Decision:**
+
+- **`.gitignore`** ignores every secret-bearing or machine-local path:
+  `.env` / `.env.*` (except `.env.example`), `.vercel/`, `supabase/.branches/`
+  `supabase/.temp/` `supabase/.env`, `.mcp.json`, `.serena/`, `.codegraph/`,
+  `.atl/`, build caches (`.next/`, `*.tsbuildinfo`, `next-env.d.ts`).
+- **`gitleaks`** runs in CI (`.github/workflows/gitleaks.yml`) on every push and
+  PR, configured by `.gitleaks.toml` (default ruleset + allowlist for
+  `.env.example`, `.next/`, lockfiles, placeholder regexes).
+- **No local pre-commit hook.** For a solo developer it is largely redundant
+  with CI and only helps machines that have `gitleaks` installed. Re-run
+  `gitleaks detect` manually before a push if desired.
+- MCP servers are registered with `claude mcp add -s local` / `-s user` so keys
+  land in `~/.claude.json`, never a repo file. Never `-s project`.
+
+**Consequences:** A secret reaching the shared GitHub repo is caught by CI
+before merge. False positives are handled by extending `.gitleaks.toml`, not by
+disabling the scan. Rotating a key that was exposed in a chat transcript (e.g.
+the Render key pasted during setup) is still a manual step in the provider
+dashboard.
+
+---
+
 ## Section 2 — Assumptions (ASM)
 
 Assumptions are things taken as true without full proof. Each carries a risk if
