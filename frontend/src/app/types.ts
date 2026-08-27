@@ -43,6 +43,11 @@ export interface ClassificationResult {
   confidence_score: number;
 }
 
+export interface Competitor {
+  name: string;
+  reason: string;
+}
+
 export interface DashboardData {
   evaluation: Evaluation;
   metrics: MetricSummary[];

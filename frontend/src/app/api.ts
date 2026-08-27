@@ -1,4 +1,9 @@
-import type { DashboardData, EvaluateRequest, Evaluation } from "./types";
+import type {
+  Competitor,
+  DashboardData,
+  EvaluateRequest,
+  Evaluation,
+} from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -23,6 +28,17 @@ export async function fetchCategories(
     `${API_URL}/api/resolve-category?brand=${encodeURIComponent(brand)}`,
   );
   if (!res.ok) throw new Error(`Failed to resolve categories: ${res.status}`);
+  return res.json();
+}
+
+export async function fetchCompetitors(
+  brand: string,
+  category: string,
+): Promise<{ brand: string; category: string; competitors: Competitor[] }> {
+  const res = await fetch(
+    `${API_URL}/api/resolve-competitors?brand=${encodeURIComponent(brand)}&category=${encodeURIComponent(category)}`,
+  );
+  if (!res.ok) throw new Error(`Failed to resolve competitors: ${res.status}`);
   return res.json();
 }
 

@@ -1,23 +1,27 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import BackendStatus from "./components/BackendStatus";
 import ConfidenceBar from "./components/ConfidenceBar";
 import Heatmap from "./components/Heatmap";
 import ResponseCard from "./components/ResponseCard";
 import {
   fetchCategories,
+  fetchCompetitors,
   fetchEvaluationDetail,
   fetchEvaluations,
   runEvaluation,
 } from "./api";
 import type {
   ClassificationResult,
+  Competitor,
   DashboardData,
   Evaluation,
   EvaluateRequest,
   MetricSummary,
   PromptType,
 } from "./types";
+import { useBackendHealth } from "./hooks/useBackendHealth";
 
 const PROMPT_TYPES: PromptType[] = [
   "direct",
@@ -46,11 +50,14 @@ export default function DashboardPage() {
   // Evaluation form state
   const [brand, setBrand] = useState("");
   const [category, setCategory] = useState("");
-  const [competitors, setCompetitors] = useState("");
   const [categories, setCategories] = useState<string[]>([]);
-  const [resolving, setResolving] = useState(false);
+  const [competitors, setCompetitors] = useState<Competitor[]>([]);
+  const [resolvingCategories, setResolvingCategories] = useState(false);
+  const [resolvingCompetitors, setResolvingCompetitors] = useState(false);
   const [resolvedBrand, setResolvedBrand] = useState<string | null>(null);
-  const brandInputRef = useRef<HTMLInputElement>(null);
+  const [competitorsResolved, setCompetitorsResolved] = useState(false);
+
+  const backendHealth = useBackendHealth();
 
   const loadEvaluations = useCallback(async () => {
     try {
@@ -108,14 +115,14 @@ export default function DashboardPage() {
   const handleResolveCategories = useCallback(async () => {
     const trimmed = brand.trim();
     if (!trimmed) return;
-
-    // Skip if already resolved for this brand
     if (resolvedBrand === trimmed && categories.length > 0) return;
 
     try {
-      setResolving(true);
+      setResolvingCategories(true);
       setError(null);
       setCategory("");
+      setCompetitors([]);
+      setCompetitorsResolved(false);
       const data = await fetchCategories(trimmed);
       setCategories(data.categories);
       setResolvedBrand(trimmed);
@@ -126,9 +133,29 @@ export default function DashboardPage() {
       setCategories([]);
       setResolvedBrand(null);
     } finally {
-      setResolving(false);
+      setResolvingCategories(false);
     }
   }, [brand, resolvedBrand, categories.length]);
+
+  const handleResolveCompetitors = useCallback(async () => {
+    if (!category || !resolvedBrand) return;
+
+    try {
+      setResolvingCompetitors(true);
+      setError(null);
+      const data = await fetchCompetitors(resolvedBrand, category);
+      setCompetitors(data.competitors);
+      setCompetitorsResolved(true);
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "Failed to resolve competitors",
+      );
+      setCompetitors([]);
+      setCompetitorsResolved(false);
+    } finally {
+      setResolvingCompetitors(false);
+    }
+  }, [category, resolvedBrand]);
 
   const handleBrandKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -144,19 +171,16 @@ export default function DashboardPage() {
     return (
       brand.trim() !== "" &&
       category !== "" &&
-      competitors.trim() !== "" &&
+      competitorsResolved &&
+      competitors.length > 0 &&
       !running &&
-      !resolving
+      !resolvingCategories &&
+      !resolvingCompetitors
     );
-  }, [brand, category, competitors, running, resolving]);
+  }, [brand, category, competitorsResolved, competitors.length, running, resolvingCategories, resolvingCompetitors]);
 
   const handleRun = useCallback(async () => {
-    const competitorList = competitors
-      .split(",")
-      .map((c) => c.trim())
-      .filter(Boolean);
-
-    if (!brand.trim() || !category || competitorList.length === 0) {
+    if (!brand.trim() || !category || competitors.length === 0) {
       setError("All fields are required");
       return;
     }
@@ -164,7 +188,7 @@ export default function DashboardPage() {
     const request: EvaluateRequest = {
       brand: brand.trim(),
       category,
-      competitors: competitorList,
+      competitors: competitors.map((c) => c.name),
     };
 
     try {
@@ -212,6 +236,8 @@ export default function DashboardPage() {
     }));
   }, [evaluations]);
 
+  const isResolving = resolvingCategories || resolvingCompetitors;
+
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
       <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
@@ -231,6 +257,8 @@ export default function DashboardPage() {
           </div>
         )}
 
+        <BackendStatus health={backendHealth} />
+
         {/* Evaluation selector + form */}
         {!dashboard && (
           <div className="space-y-6">
@@ -239,7 +267,7 @@ export default function DashboardPage() {
               <h2 className="mb-4 text-lg font-semibold text-zinc-200">
                 New Evaluation
               </h2>
-              <div className="grid gap-4 sm:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-2">
                 {/* Brand input */}
                 <div>
                   <label htmlFor="brand" className="mb-1 block text-sm text-zinc-400">
@@ -247,16 +275,15 @@ export default function DashboardPage() {
                   </label>
                   <div className="flex gap-2">
                     <input
-                      ref={brandInputRef}
                       id="brand"
                       type="text"
                       value={brand}
                       onChange={(e) => {
                         setBrand(e.target.value);
-                        // Reset categories when brand changes
                         if (e.target.value !== resolvedBrand) {
                           setCategories([]);
                           setCategory("");
+                          setCompetitors([]);
                           setResolvedBrand(null);
                         }
                       }}
@@ -268,10 +295,10 @@ export default function DashboardPage() {
                     <button
                       type="button"
                       onClick={handleResolveCategories}
-                      disabled={resolving || !brand.trim()}
+                      disabled={resolvingCategories || !brand.trim()}
                       className="inline-flex items-center justify-center rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-300 transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {resolving ? (
+                      {resolvingCategories ? (
                         <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
@@ -283,7 +310,7 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                {/* Category — select from resolved list, or disabled placeholder */}
+                {/* Category — select from resolved list */}
                 <div>
                   <label htmlFor="category" className="mb-1 block text-sm text-zinc-400">
                     Category
@@ -292,7 +319,11 @@ export default function DashboardPage() {
                     <select
                       id="category"
                       value={category}
-                      onChange={(e) => setCategory(e.target.value)}
+                      onChange={(e) => {
+                        setCategory(e.target.value);
+                        setCompetitors([]);
+                        setCompetitorsResolved(false);
+                      }}
                       className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                     >
                       <option value="" disabled>
@@ -312,42 +343,63 @@ export default function DashboardPage() {
                       value=""
                       className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-500"
                       placeholder={
-                        resolving
+                        resolvingCategories
                           ? "Resolving categories…"
                           : "Enter a brand first"
                       }
                     />
                   )}
                 </div>
-
-                {/* Competitors */}
-                <div>
-                  <label htmlFor="competitors" className="mb-1 block text-sm text-zinc-400">
-                    Competitors (comma-separated)
-                  </label>
-                  <input
-                    id="competitors"
-                    type="text"
-                    value={competitors}
-                    onChange={(e) => setCompetitors(e.target.value)}
-                    className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    placeholder="e.g. Jira, Asana, Monday"
-                  />
-                </div>
               </div>
 
-              {/* Status hint */}
-              {resolvedBrand && categories.length > 0 && (
-                <p className="mt-2 text-xs text-zinc-500">
-                  Categories resolved for &quot;{resolvedBrand}&quot; — select one above
-                </p>
-              )}
+              {/* Competitors — manual resolution */}
+              <div className="mt-4">
+                <label className="mb-1 block text-sm text-zinc-400">
+                  Competitors
+                </label>
+                {resolvingCompetitors ? (
+                  <div className="flex items-center gap-2 text-sm text-zinc-500">
+                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Resolving competitors…
+                  </div>
+                ) : competitorsResolved && competitors.length > 0 ? (
+                  <div className="space-y-2">
+                    {competitors.map((c) => (
+                      <div
+                        key={c.name}
+                        className="flex items-start gap-2 text-sm"
+                      >
+                        <span className="font-medium text-zinc-200">
+                          {c.name}
+                        </span>
+                        <span className="text-zinc-500">—</span>
+                        <span className="text-zinc-400">{c.reason}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : category ? (
+                  <button
+                    type="button"
+                    onClick={handleResolveCompetitors}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-300 transition-colors hover:bg-zinc-700"
+                  >
+                    Resolve Competitors
+                  </button>
+                ) : (
+                  <p className="text-sm text-zinc-500">
+                    Select a category first
+                  </p>
+                )}
+              </div>
 
               <button
                 type="button"
                 onClick={handleRun}
                 disabled={!canRun}
-                className="mt-4 inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                className="mt-5 inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {running ? (
                   <>
