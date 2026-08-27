@@ -24,7 +24,11 @@ from aeo_engine.database import (
     save_responses,
     update_evaluation,
 )
-from aeo_engine.gemini import resolve_brand_categories, run_parallel_sampling
+from aeo_engine.gemini import (
+    resolve_brand_categories,
+    resolve_brand_competitors,
+    run_parallel_sampling,
+)
 from aeo_engine.metrics import compute_per_type_metrics
 from aeo_engine.models import Evaluation, PromptType
 from aeo_engine.prompts import generate_corpus, get_corpus_by_type
@@ -78,6 +82,26 @@ async def resolve_category(brand: str) -> dict:
         )
 
     return {"brand": brand.strip(), "categories": categories}
+
+
+@app.get("/api/resolve-competitors")
+async def resolve_competitors(brand: str, category: str) -> dict:
+    """Resolve main competitors for a brand in a given category.
+
+    Uses Gemini to infer competitors with brief justifications.
+    The frontend displays these as read-only context before evaluation.
+    """
+    if not brand.strip():
+        raise HTTPException(status_code=400, detail="brand is required")
+    if not category.strip():
+        raise HTTPException(status_code=400, detail="category is required")
+
+    competitors = await resolve_brand_competitors(brand.strip(), category.strip())
+    return {
+        "brand": brand.strip(),
+        "category": category.strip(),
+        "competitors": [c.model_dump() for c in competitors],
+    }
 
 
 @app.get("/api/evaluations")

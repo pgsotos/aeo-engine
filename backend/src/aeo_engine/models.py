@@ -92,3 +92,10 @@ class DashboardData(BaseModel):
     metrics: list[MetricSummary]
     responses: list[GeminiResponse]
     classifications: list[ClassificationResult]
+
+
+class Competitor(BaseModel):
+    """A competitor resolved by Gemini for a brand + category."""
+
+    name: str
+    reason: str
