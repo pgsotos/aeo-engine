@@ -32,3 +32,8 @@ build/
 
 # Supabase CLI temp
 supabase/.temp/
+
+# Local tooling artifacts
+.atl/
+.playwright-cli/
+.playwright-mcp/
