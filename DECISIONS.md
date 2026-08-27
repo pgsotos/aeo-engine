@@ -105,9 +105,15 @@ interface.
 
 **Consequences:** Two stores to operate. `raw_response` rows are immutable by
 convention and by DB permissions. In milestone 1 only Postgres is wired;
-ClickHouse joins in milestone 4. Local Supabase is run as the `supabase/postgres`
-image only — the full Supabase stack (Auth, Studio, PostgREST) is a hosted
-project or a separate CLI concern, not part of `docker-compose.yml`.
+ClickHouse joins in milestone 4.
+
+Local Postgres runs as **plain `postgres:16-alpine`**, not `supabase/postgres`.
+The Supabase image ships its own `pg_hba.conf` with `peer map=supabase_map` and
+init scripts that reject a custom `POSTGRES_USER`, so it only works inside the
+full Supabase CLI stack; nothing in milestones 2–4 needs its bundled extensions
+(pgsodium, vault, pg_cron, TimescaleDB). The full Supabase stack (Auth, Studio,
+PostgREST, RLS) is a hosted project used in staging/production — not part of
+`docker-compose.yml`. Schema and migrations are written to run on both.
 
 ---
 
@@ -143,6 +149,29 @@ are roadmap only, not scheduled.
 **Consequences:** Running ClickHouse, a full Temporal cluster and dual
 persistence early is heavier than a technical test strictly needs. This
 overhead is a deliberate, documented bet on the long-term platform.
+
+---
+
+## ADR-008 — Strict branch and PR governance
+
+**Status:** Accepted
+
+**Context:** Multiple agents write to one monorepo. Direct commits to `main`
+would make ownership violations and unreviewed work land in the trunk.
+
+**Decision:** No direct commits to `main`. Every milestone or sub-task runs on a
+dedicated branch (`feature/hito-<N>-<slug>`). Merge to `main` requires:
+
+1. `team-lead` audits the branch — atomic Conventional Commits, correct
+   per-agent file ownership, scope matches the milestone.
+2. `qa-validator-agent` approves: acceptance criteria met, tests pass.
+
+Only then does `team-lead` merge. Milestone 1 governance/setup commits are the
+last work committed directly to `main`.
+
+**Consequences:** Slower than committing straight to trunk, but every change to
+`main` is reviewed and attributable. The `file-ownership-guard` hook enforces
+directory ownership during work; this ADR adds the human-gate before merge.
 
 ---
 

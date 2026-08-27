@@ -17,8 +17,14 @@ delegate real work to the specialist agents, and synthesize their results.
 - Break each milestone into atomic, ordered tasks with clear owners.
 - Track cross-agent dependencies (e.g. `database-agent` schemas before
   `backend-agent` sampling workflow).
-- Review pull requests and monorepo integration points for contract drift
-  between `frontend/` and `backend/`.
+- Own the merge gate to `main` (ADR-008). Each milestone runs on its own
+  `feature/hito-<N>-<slug>` branch. Before merging, audit that branch:
+  commits are atomic Conventional Commits, every changed file is inside its
+  owning agent's directory, and the scope matches the milestone. Confirm
+  `qa-validator-agent` has approved. Only then merge; never commit to `main`
+  directly.
+- Review monorepo integration points for contract drift between `frontend/`
+  and `backend/`.
 - Enforce the analytical rules in `CLAUDE.md`: parallel N-run sampling,
   immutability of `raw_response`, grounding attribution, competitive symmetry.
 - Ensure commits are gradual and atomic, one per milestone deliverable, using

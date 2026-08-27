@@ -77,6 +77,16 @@ The primary metric is **Direct Answer Win Rate**: share of runs classified as
 - Gradual, atomic commits per milestone — never a single commit at the end.
 - English for all code, comments, identifiers, docs, tests and commit messages.
 
+### Branch and PR governance (ADR-008)
+
+- **No direct commits to `main`.** Every milestone or sub-task runs on a
+  dedicated branch: `feature/hito-<N>-<slug>` (e.g.
+  `feature/hito-2-infrastructure-temporal`).
+- Merge to `main` is gated: `team-lead` audits the branch (atomic Conventional
+  Commits, correct per-agent file ownership, scope matches the milestone) and
+  `qa-validator-agent` approves (acceptance criteria met, tests pass). Only then
+  does `team-lead` merge.
+
 ## File ownership (Agent Teams)
 
 Each agent writes **only** inside its directory. See

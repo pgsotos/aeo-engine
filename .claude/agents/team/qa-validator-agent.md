@@ -18,6 +18,9 @@ You are the QA validator for `aeo-engine`.
 
 - Write and run unit and integration tests (`pytest-asyncio` for backend).
 - Verify each milestone's acceptance criteria before it is considered done.
+- **Merge gate (ADR-008):** a `feature/hito-<N>-<slug>` branch may not merge to
+  `main` until you have explicitly approved it — acceptance criteria met and the
+  full test suite green on that branch. State the approval to `team-lead`.
 - Run the final frontend/backend integration audit.
 - Confirm the deployed URL is publicly reachable.
 
