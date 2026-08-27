@@ -1,60 +1,52 @@
-# aeo-engine — Objetivo Real del Desafío
+# aeo-engine — Project Scope
 
-## El encargo (resumen ejecutivo)
+## The challenge
 
-Medir **cómo aparece Linear** cuando un usuario le pregunta a **Gemini** sobre
-herramientas de gestión de proyectos. No es un ranking de Google: es un
-análisis de respuestas generadas por IA.
+Measure **how often Linear appears as the direct answer** when users ask
+**Gemini** about project management tools. Deploy a working app at a public URL.
 
-## ¿Qué significa esto en la práctica?
+## Parameters
 
-1. **Preguntarle a Gemini** con prompts variados sobre la categoría
-2. **Guardar las respuestas crudas** (inmutabilidad total)
-3. **Clasificar cada respuesta** en: Direct Winner / Alternative Mention / Omitted
-4. **Calcular el Win Rate** con intervalo de confianza (N runs independientes)
-5. **Mostrar los resultados** en una URL accesible
-
-## Parámetros del desafío
-
-| Elemento | Valor |
+| Element | Value |
 |---|---|
-| Marca focus | Linear |
-| Categoría | Herramientas de gestión de proyectos |
-| Competidores | Jira, Asana, Monday, Notion |
-| Motor IA | Gemini (API Key proporcionada) |
-| Deadline | Viernes 28 agosto, antes del mediodía |
+| Focus brand | Linear |
+| Category | Project management tools |
+| Competitors | Jira, Asana, Monday, Notion |
+| AI engine | Gemini (`gemini-3.6-flash`) |
+| Deadline | Friday August 28, before noon |
 
-## Stack mínimo viable
+## Creative angle: Multi-dimension + Uncertainty
 
-| Capa | Tecnología | Por qué |
+Instead of a single "which tool is best" query, we test **5 prompt types** to
+map WHERE Linear's visibility is strong and where it's weak:
+
+| Type | Example | What it measures |
 |---|---|---|
-| Backend | Python + FastAPI + uv | Lo que el stack del proyecto pide |
-| Frontend | Next.js + Bun | Lo que el stack del proyecto pide |
-| Datos | SQLite | Simple, sin infra extra, suficiente para el scope |
-| Motor IA | Gemini API | El motor que el desafío requiere |
+| Direct | "What's the best PM tool?" | General recommendation position |
+| Comparative | "Linear vs Jira, which one?" | Head-to-head competitiveness |
+| Use-case | "Best tool for a 10-person startup?" | Context-specific relevance |
+| Feature | "Best keyboard-driven PM tool?" | Attribute-specific strength |
+| Negative | "Why NOT use Linear?" | Resilience to negative framing |
 
-## Lo que NO necesitamos (para este scope)
+Each prompt runs **8 independent times** (N=8) with a Wilson score confidence
+interval — because the enunciado says "los modelos son probabilísticos" and
+we take that seriously.
 
-- ❌ ClickHouse (SQLite alcanza para una evaluación)
-- ❌ Temporal.io (asyncio + asyncio.gather para N runs paralelas)
-- ❌ Redis (no hay broker needed)
-- ❌ Agent team de 5 agentes (somos uno desarrollando)
-- ❌ Branch governance estricta (es un technical test, no un equipo de 10)
+## Current status
 
-## Lo que SÍ conservamos del framework existente
-
-- ✅ DECISIONS.md (formato decided/assumed/left-out — genuinamente bueno)
-- ✅ CLAUDE.md (reglas analíticas — correcto)
-- ✅ Git history con Conventional Commits
-- ✅ El concepto de N-run sampling con confidence intervals
-- ✅ La clasificación Direct Winner / Alternative / Omitted
-- ✅ Competitive symmetry (prompts invertidos)
-
-## Cronograma estimado
-
-| Día | Entregable |
+| Component | Status |
 |---|---|
-| Hoy | Backend: Gemini client + classifier + API |
-| Mañana | Frontend: dashboard + visualizaciones |
-| Jueves | Integration + deployment + polish |
-| Viernes AM | Buffer para fixes + deploy final |
+| Backend (FastAPI + Gemini) | ✅ Working, tested |
+| Supabase schema | ✅ 4 tables created |
+| Gemini connection | ✅ Verified with live API |
+| Frontend dashboard | 🔲 In progress |
+| Deployment | 🔲 Pending |
+
+## Stack
+
+| Layer | Choice | Why |
+|---|---|---|
+| Backend | Python + FastAPI + uv | Project stack requirement |
+| Frontend | Next.js + Bun | Project stack requirement |
+| Database | Supabase (hosted Postgres) | Simple, hosted, no local infra |
+| AI engine | Gemini API (`gemini-3.6-flash`) | Required by challenge |
