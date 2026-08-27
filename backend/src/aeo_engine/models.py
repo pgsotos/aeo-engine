@@ -44,6 +44,7 @@ class GeminiResponse(BaseModel):
     run_index: int = Field(ge=1)
     model_id: str
     raw_text: str
+    grounding_metadata: dict | None = None  # Google Search grounding; None when absent (stochastic)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
