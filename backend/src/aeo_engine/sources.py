@@ -117,9 +117,7 @@ def compute_source_impact(
     correlation possible). Rows sort by citations desc, then impact ratio desc.
     """
     winner_responses = {
-        c.response_id
-        for c in classifications
-        if c.classification == Classification.DIRECT_WINNER
+        c.response_id for c in classifications if c.classification == Classification.DIRECT_WINNER
     }
     by_domain: dict[str, tuple[int, int]] = {}
     for source in sources:
