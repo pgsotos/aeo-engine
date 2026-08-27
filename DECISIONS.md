@@ -1,8 +1,26 @@
-# DECISIONS.md — Architecture Decision Records
+# DECISIONS.md — Decision & Scope Log
 
-Format: each ADR has Status, Context, Decision, Consequences. Newest last.
+This document is the comprehensive record of how `aeo-engine` was shaped. It is
+**not** limited to technology choices or Architecture Decision Records. Updating
+it is mandatory whenever any of the following changes:
+
+1. **What was decided** — architecture, stack, sampling and analytical
+   methodology. Captured as ADRs in [Section 1](#section-1--decisions-adr).
+2. **What was assumed** — project-category brands (e.g. Linear / Jira), and the
+   handling and limits of LLM output variance. Captured as ASMs in
+   [Section 2](#section-2--assumptions-asm).
+3. **What was left out** — product scope dropped for time, additional answer
+   engines, long-horizon time-series analysis. Captured as OOS entries in
+   [Section 3](#section-3--out-of-scope-oos).
+
+Every entry has Status, Context, Decision/Assumption/Exclusion, and
+Consequences. Newest last within each section. When an assumption is validated
+or invalidated, or an excluded item is brought back in, add a new entry rather
+than editing history.
 
 ---
+
+## Section 1 — Decisions (ADR)
 
 ## ADR-001 — Single monorepo
 
@@ -125,3 +143,126 @@ are roadmap only, not scheduled.
 **Consequences:** Running ClickHouse, a full Temporal cluster and dual
 persistence early is heavier than a technical test strictly needs. This
 overhead is a deliberate, documented bet on the long-term platform.
+
+---
+
+## Section 2 — Assumptions (ASM)
+
+Assumptions are things taken as true without full proof. Each carries a risk if
+wrong and a trigger that would force a revisit.
+
+---
+
+## ASM-001 — Project-category brands
+
+**Status:** Assumed
+
+**Context:** The evaluation needs a fixed competitive category to measure Win
+Rate against. The technical test fixes a focus brand and its competitors.
+
+**Assumption:** The focus brand is **Linear**; the category is project /
+issue-tracking tools, with competitors **Jira, Asana, ClickUp, Monday.com**
+(adjustable). Prompts are authored around this set and used in inverted pairs
+(e.g. "Linear vs Jira" and "Jira vs Linear").
+
+**Consequences:** The prompt corpus, competitor list and grounding fixtures are
+hard-coded to this category for the deliverable. Supporting a different brand or
+category means a new corpus, not a config toggle — until the corpus is made
+data-driven (roadmap). If the category definition is wrong (missing a real
+competitor, including a non-competitor), Share of Voice and Win Rate are skewed.
+
+**Revisit trigger:** onboarding a second brand, or evidence that the category
+set does not match how answer engines actually frame the space.
+
+---
+
+## ASM-002 — LLM output variance is bounded and estimable
+
+**Status:** Assumed
+
+**Context:** Gemini responses are non-deterministic. Metrics must still be
+reportable with a stated uncertainty.
+
+**Assumption:** N = 8 independent runs per prompt is enough to estimate the
+proportion of `Direct Winner` outcomes with a usable confidence interval, and
+the underlying distribution is stable enough over a single evaluation window
+that the runs are effectively i.i.d.
+
+**Consequences and known limits:**
+
+- N = 8 gives wide intervals for rare outcomes; small Win Rate differences
+  between close competitors may not be statistically separable. Intervals are
+  reported so consumers do not over-read noise.
+- Model version, safety filtering, prompt phrasing and time of day all shift the
+  distribution. Runs within one evaluation are comparable; runs across model
+  versions or long gaps are not, and are labelled with the model id and
+  timestamp.
+- Grounding (`google_search`) adds a second source of variance (which searches
+  fire, which pages are retrieved) that N-run sampling captures but does not
+  isolate.
+- The classifier itself (`Direct Winner` / `Alternative Mention` /
+  `Omitted/Lost`) is a deterministic function over `raw_response`; its error is
+  bounded by fixture coverage, tracked separately in QA, not by N.
+
+**Revisit trigger:** intervals too wide to support a product claim, or observed
+run-to-run drift within a single evaluation window.
+
+---
+
+## Section 3 — Out of scope (OOS)
+
+Explicitly excluded for the current deliverable. Listed so the boundary is a
+decision, not an oversight. Each entry says why and what it would take to bring
+in.
+
+---
+
+## OOS-001 — Product scope dropped for time
+
+**Status:** Excluded (deliverable)
+
+**Excluded:** user auth and multi-tenant accounts beyond a minimal config row;
+scheduled/recurring evaluations; alerting and notifications; historical
+dashboards beyond the current evaluation; prompt-corpus editing UI; export /
+reporting.
+
+**Why:** none are needed to demonstrate the core measurement (Direct Answer Win
+Rate with confidence intervals, grounding attribution, category symmetry).
+
+**To bring in:** post-deliverable milestones; most depend on the corpus becoming
+data-driven and on a job scheduler layered on Temporal.
+
+---
+
+## OOS-002 — Additional answer engines
+
+**Status:** Excluded (deliverable)
+
+**Excluded:** ChatGPT / OpenAI, Perplexity, Claude, Google AI Overviews as
+measured engines. Only **Google Gemini (Pro / Flash)** is wired.
+
+**Why:** each engine has a different response shape, grounding model and citation
+format. Supporting one well — including causal source attribution — is more
+valuable for the deliverable than shallow multi-engine coverage.
+
+**To bring in:** introduce an `AnswerEngine` port with per-engine adapters and
+normalise responses to a common internal shape before classification. The
+immutable `raw_response` store already keeps each engine's payload verbatim, so
+this is additive.
+
+---
+
+## OOS-003 — Long-horizon time-series analysis
+
+**Status:** Excluded (deliverable)
+
+**Excluded:** trend lines over weeks/months, seasonality detection, forecasting
+citation saturation, change-point detection on Win Rate.
+
+**Why:** requires sustained scheduled collection and a body of historical data
+that does not exist yet. ClickHouse schemas (M4) are designed to support this
+later (time-partitioned `MergeTree`), but the analysis itself is not built.
+
+**To bring in:** the predictive forecasting innovation module — depends on
+OOS-001 (scheduled evaluations) and accumulated history.
+

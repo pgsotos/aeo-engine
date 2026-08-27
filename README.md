@@ -21,7 +21,7 @@ aeo-engine/
 ├── .claude/agents/team/ Agent Teams definitions
 ├── .claude/hooks/       file-ownership guard
 ├── CLAUDE.md            agent guidance and rules
-├── DECISIONS.md         architecture decision records
+├── DECISIONS.md         decision & scope log: decided / assumed / left out
 └── docker-compose.yml   global infrastructure
 ```
 

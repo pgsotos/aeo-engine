@@ -96,3 +96,17 @@ Milestone 1 (this commit): monorepo structure, governance docs, agent team
 setup. Milestones 2–6 and the innovation modules (adversarial simulation,
 predictive forecasting, cross-lingual consistency) are tracked in
 `DECISIONS.md`.
+
+## DECISIONS.md is mandatory
+
+`DECISIONS.md` is a full decision & scope log, not just ADRs. Record there,
+without exception:
+
+- **Decided** — architecture, stack, sampling and analytical methodology (ADR).
+- **Assumed** — category brands (Linear / Jira / …), LLM variance handling and
+  its statistical limits (ASM).
+- **Left out** — product scope cut for time, extra answer engines, long-horizon
+  time series (OOS).
+
+Any agent making or discovering such a choice adds an entry before finishing the
+task.
