@@ -7,6 +7,7 @@ export interface Evaluation {
   category: string;
   sampling_n: number;
   status: string;
+  consistency: number | null;
   created_at: string;
   completed_at: string | null;
   /** Brands scored alongside the focus brand. Empty while a run is in flight. */
@@ -18,6 +19,7 @@ export interface MetricSummary {
   prompt_type: PromptType;
   brand: string;
   win_rate: number;
+  share_of_voice: number | null;
   ci_lower: number;
   ci_upper: number;
   total_runs: number;
