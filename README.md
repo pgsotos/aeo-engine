@@ -53,12 +53,12 @@ aeo-engine/
 ### Run
 
 ```bash
+cp .env.example .env        # then edit values
 docker compose up -d
 docker compose ps           # all services healthy
 ```
 
-Create a `.env` file at the repo root (git-ignored) with these variables —
-`docker compose` reads it automatically:
+`.env` is git-ignored; `.env.example` is the tracked template. Variables:
 
 | Var | Default | Notes |
 |---|---|---|
