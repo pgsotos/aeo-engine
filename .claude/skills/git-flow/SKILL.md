@@ -24,6 +24,21 @@ main (production / stable)
   ```
 - Commit atomic increments; push the feature branch; open a PR to `develop`.
 
+## Keeping a feature branch current
+
+When `develop` moves ahead of your branch, **rebase — never merge `develop` in**:
+
+```bash
+git fetch origin
+git rebase origin/develop        # replay your commits on top of latest develop
+# resolve conflicts, then:
+git push --force-with-lease
+```
+
+This keeps history linear and each PR a clean diff against `develop`. Do not run
+`git merge develop` on a feature branch — it creates merge commits that muddy
+the PR. Stacked PRs rebase onto their parent branch the same way.
+
 ## Merge governance
 
 Per ADR-008, merging to `main` requires (historically `team-lead` + `qa`):
