@@ -19,8 +19,10 @@ __pycache__/
 # Build output
 frontend/.next/
 frontend/out/
+frontend/next-env.d.ts
 dist/
 build/
+*.tsbuildinfo
 
 # Data
 *.log
@@ -30,5 +32,18 @@ build/
 .idea/
 .vscode/
 
-# Supabase CLI temp
+# Vercel
+.vercel/
+
+# Supabase local CLI (only migrations/ is tracked)
+supabase/.branches/
 supabase/.temp/
+supabase/.env
+
+# CodeGraph local index
+.codegraph/
+
+# Local tooling artifacts
+.atl/
+.playwright-cli/
+.playwright-mcp/
