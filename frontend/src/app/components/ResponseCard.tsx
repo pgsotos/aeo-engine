@@ -2,7 +2,6 @@
 
 import { useMemo } from "react";
 import type { ClassificationResult, GeminiResponse } from "../types";
-import { BRANDS } from "../types";
 
 interface ResponseCardProps {
   response: GeminiResponse;
@@ -23,9 +22,24 @@ const CLASSIFICATION_LABELS: Record<string, string> = {
   omitted: "Omitted",
 };
 
+// Underline colors per brand — derived from classification data, not hardcoded brand list
+const BRAND_COLORS = [
+  "border-b-blue-400",
+  "border-b-purple-400",
+  "border-b-orange-400",
+  "border-b-zinc-300",
+  "border-b-teal-400",
+  "border-b-pink-400",
+];
+
+function getBrandColor(brand: string, brandIndex: number): string {
+  return BRAND_COLORS[brandIndex % BRAND_COLORS.length];
+}
+
 function highlightBrands(
   text: string,
   brandClassifications: Map<string, ClassificationResult>,
+  brandIndexMap: Map<string, number>,
 ): React.ReactNode[] {
   const brandPositions: Array<{
     brand: string;
@@ -33,7 +47,7 @@ function highlightBrands(
     end: number;
   }> = [];
 
-  for (const brand of BRANDS) {
+  for (const brand of brandClassifications.keys()) {
     const lowerText = text.toLowerCase();
     const lowerBrand = brand.toLowerCase();
     let searchStart = 0;
@@ -50,14 +64,6 @@ function highlightBrands(
 
   const nodes: React.ReactNode[] = [];
   let cursor = 0;
-
-  const brandUnderlineColor: Record<string, string> = {
-    Linear: "border-b-blue-400",
-    Jira: "border-b-blue-300",
-    Asana: "border-b-purple-400",
-    Monday: "border-b-orange-400",
-    Notion: "border-b-zinc-300",
-  };
 
   for (const pos of brandPositions) {
     if (pos.start < cursor) continue;
@@ -76,10 +82,12 @@ function highlightBrands(
           ? "◆"
           : "";
 
+    const colorIdx = brandIndexMap.get(pos.brand) ?? 0;
+
     nodes.push(
       <span
         key={`b-${pos.start}-${pos.brand}`}
-        className={`font-semibold border-b-2 ${brandUnderlineColor[pos.brand] ?? "border-b-zinc-400"}`}
+        className={`font-semibold border-b-2 ${getBrandColor(pos.brand, colorIdx)}`}
       >
         {text.slice(pos.start, pos.end)}
         {badge && (
@@ -102,14 +110,20 @@ export default function ResponseCard({
   response,
   classifications,
 }: ResponseCardProps) {
-  const brandClassMap = useMemo(() => {
-    const map = new Map<string, ClassificationResult>();
+  const { brandClassMap, brandIndexMap } = useMemo(() => {
+    const clsMap = new Map<string, ClassificationResult>();
+    const idxMap = new Map<string, number>();
+    let idx = 0;
+
     for (const c of classifications) {
       if (c.response_id === response.id) {
-        map.set(c.brand, c);
+        clsMap.set(c.brand, c);
+        if (!idxMap.has(c.brand)) {
+          idxMap.set(c.brand, idx++);
+        }
       }
     }
-    return map;
+    return { brandClassMap: clsMap, brandIndexMap: idxMap };
   }, [classifications, response.id]);
 
   const date = new Date(response.created_at);
@@ -128,7 +142,7 @@ export default function ResponseCard({
       </div>
 
       <div className="mb-3 text-sm leading-relaxed text-zinc-300 whitespace-pre-wrap">
-        {highlightBrands(response.raw_text, brandClassMap)}
+        {highlightBrands(response.raw_text, brandClassMap, brandIndexMap)}
       </div>
 
       <div className="flex flex-wrap gap-2">

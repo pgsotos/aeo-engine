@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 from aeo_engine.classifier import classify_all_brands
 from aeo_engine.config import settings
@@ -25,17 +26,22 @@ from aeo_engine.database import (
 )
 from aeo_engine.gemini import run_parallel_sampling
 from aeo_engine.metrics import compute_per_type_metrics
-from aeo_engine.models import (
-    ClassificationResult,
-    Evaluation,
-    GeminiResponse,
-    PromptType,
-)
-from aeo_engine.prompts import ALL_BRANDS, ALL_PROMPTS, FOCUS_BRAND, PROMPTS_BY_TYPE
+from aeo_engine.models import Evaluation, PromptType
+from aeo_engine.prompts import generate_corpus, get_corpus_by_type
+
+
+class EvaluateRequest(BaseModel):
+    """Request body for /api/evaluate."""
+
+    brand: str = "Linear"
+    category: str = "project management"
+    competitors: list[str] = ["Jira", "Asana", "Monday", "Notion"]
+    sampling_n: int | None = None
+
 
 app = FastAPI(
     title="aeo-engine",
-    description="AEO monitoring: how often is Linear the direct answer in Gemini?",
+    description="AEO monitoring: how often is a brand the direct answer in Gemini?",
     version="0.1.0",
 )
 
@@ -80,66 +86,60 @@ async def get_evaluation_detail(evaluation_id: str) -> dict:
 
 
 @app.post("/api/evaluate")
-async def run_evaluation(
-    brand: str = FOCUS_BRAND,
-    sampling_n: int | None = None,
-) -> dict:
+async def run_evaluation(request: EvaluateRequest) -> dict:
     """Run a full evaluation: N runs × M prompts × all brands.
 
-    This is the main orchestration endpoint. It:
-    1. Creates an evaluation record
-    2. Runs N independent Gemini calls per prompt
-    3. Classifies each response for all brands
-    4. Computes per-type metrics with confidence intervals
-    5. Stores everything in Supabase
+    Accepts brand, category, and competitors as parameters.
+    No hardcoded brands — fully dynamic prompt generation.
     """
-    n = sampling_n or settings.sampling_n
+    n = request.sampling_n or settings.sampling_n
     evaluation_id = str(uuid.uuid4())
+    all_brands = [request.brand] + request.competitors
+
+    # Generate corpus dynamically
+    corpus = generate_corpus(request.brand, request.category, request.competitors)
+    corpus_by_type = get_corpus_by_type(corpus)
 
     # Create evaluation record
     evaluation = Evaluation(
         id=evaluation_id,
-        brand=brand,
-        category="Project Management Tools",
+        brand=request.brand,
+        category=request.category,
         sampling_n=n,
         status="running",
     )
     create_evaluation(evaluation)
 
     try:
-        all_responses: list[GeminiResponse] = []
-        all_classifications: list[ClassificationResult] = []
-        classifications_by_type: dict[PromptType, list[ClassificationResult]] = (
-            defaultdict(list)
-        )
+        all_classifications = []
+        classifications_by_type: dict[PromptType, list] = defaultdict(list)
 
         # Run each prompt with N parallel samples
-        for prompt in ALL_PROMPTS:
+        for prompt in corpus:
             responses = await run_parallel_sampling(
                 prompt=prompt.text,
                 prompt_id=prompt.id,
                 evaluation_id=evaluation_id,
                 n=n,
             )
-            all_responses.extend(responses)
+
+            # Save raw responses (immutable)
+            save_responses(responses)
 
             # Classify each response for all brands
             for resp in responses:
-                brand_results = classify_all_brands(resp.raw_text, ALL_BRANDS)
+                brand_results = classify_all_brands(resp.raw_text, all_brands)
                 for result in brand_results:
                     result.response_id = resp.id or ""
                     all_classifications.append(result)
                     classifications_by_type[prompt.prompt_type].append(result)
-
-        # Save raw responses (immutable)
-        save_responses(all_responses)
 
         # Save classifications
         save_classifications(all_classifications)
 
         # Compute per-type metrics
         metrics = compute_per_type_metrics(
-            classifications_by_type, evaluation_id, ALL_BRANDS
+            classifications_by_type, evaluation_id, all_brands
         )
         save_metrics(metrics)
 
@@ -155,7 +155,11 @@ async def run_evaluation(
         return {
             "evaluation_id": evaluation_id,
             "status": "completed",
-            "total_responses": len(all_responses),
+            "brand": request.brand,
+            "category": request.category,
+            "competitors": request.competitors,
+            "total_prompts": len(corpus),
+            "total_responses": len(corpus) * n,
             "total_classifications": len(all_classifications),
             "metrics_count": len(metrics),
         }
@@ -166,13 +170,25 @@ async def run_evaluation(
 
 
 @app.get("/api/prompts")
-async def get_prompts() -> dict:
-    """Return the prompt corpus grouped by type."""
+async def get_prompts(
+    brand: str = "Linear",
+    category: str = "project management",
+    competitors: str = "Jira,Asana,Monday,Notion",
+) -> dict:
+    """Return the prompt corpus grouped by type for any brand/category."""
+    competitor_list = [c.strip() for c in competitors.split(",")]
+    corpus = generate_corpus(brand, category, competitor_list)
+    by_type = get_corpus_by_type(corpus)
+
     return {
-        "brand": FOCUS_BRAND,
-        "competitors": [b for b in ALL_BRANDS if b != FOCUS_BRAND],
+        "brand": brand,
+        "category": category,
+        "competitors": competitor_list,
         "prompts": {
-            pt.value: [{"id": p.id, "text": p.text, "inverted": p.inverted} for p in prompts]
-            for pt, prompts in PROMPTS_BY_TYPE.items()
+            pt.value: [
+                {"id": p.id, "text": p.text, "inverted": p.inverted}
+                for p in prompts
+            ]
+            for pt, prompts in by_type.items()
         },
     }

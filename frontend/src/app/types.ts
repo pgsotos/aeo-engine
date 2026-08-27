@@ -50,7 +50,12 @@ export interface DashboardData {
   classifications: ClassificationResult[];
 }
 
-export const BRANDS = ["Linear", "Jira", "Asana", "Monday", "Notion"] as const;
+export interface EvaluateRequest {
+  brand: string;
+  category: string;
+  competitors: string[];
+  sampling_n?: number;
+}
 
 export const PROMPT_TYPE_LABELS: Record<PromptType, string> = {
   direct: "Direct",

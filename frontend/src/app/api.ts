@@ -1,4 +1,4 @@
-import type { DashboardData, Evaluation } from "./types";
+import type { DashboardData, EvaluateRequest, Evaluation } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -17,14 +17,12 @@ export async function fetchEvaluationDetail(
 }
 
 export async function runEvaluation(
-  brand = "Linear",
-  samplingN?: number,
+  request: EvaluateRequest,
 ): Promise<{ evaluation_id: string; status: string }> {
-  const params = new URLSearchParams({ brand });
-  if (samplingN !== undefined) params.set("sampling_n", String(samplingN));
-
-  const res = await fetch(`${API_URL}/api/evaluate?${params}`, {
+  const res = await fetch(`${API_URL}/api/evaluate`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
   });
   if (!res.ok) throw new Error(`Failed to run evaluation: ${res.status}`);
   return res.json();

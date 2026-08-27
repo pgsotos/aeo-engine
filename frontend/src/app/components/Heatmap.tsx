@@ -1,7 +1,7 @@
 "use client";
 
 import type { MetricSummary, PromptType } from "../types";
-import { BRANDS, PROMPT_TYPE_LABELS } from "../types";
+import { PROMPT_TYPE_LABELS } from "../types";
 
 interface HeatmapProps {
   metrics: MetricSummary[];
@@ -28,6 +28,9 @@ const PROMPT_TYPES: PromptType[] = [
 ];
 
 export default function Heatmap({ metrics }: HeatmapProps) {
+  // Derive brands dynamically from the metrics data
+  const brands = Array.from(new Set(metrics.map((m) => m.brand)));
+
   const cellMap = new Map<string, MetricSummary>();
   for (const m of metrics) {
     cellMap.set(`${m.prompt_type}-${m.brand}`, m);
@@ -41,7 +44,7 @@ export default function Heatmap({ metrics }: HeatmapProps) {
             <th className="px-4 py-3 text-left font-medium text-zinc-400">
               Prompt Type
             </th>
-            {BRANDS.map((brand) => (
+            {brands.map((brand) => (
               <th
                 key={brand}
                 className="px-4 py-3 text-center font-medium text-zinc-400"
@@ -57,7 +60,7 @@ export default function Heatmap({ metrics }: HeatmapProps) {
               <td className="px-4 py-3 font-medium text-zinc-200">
                 {PROMPT_TYPE_LABELS[type]}
               </td>
-              {BRANDS.map((brand) => {
+              {brands.map((brand) => {
                 const cell = cellMap.get(`${type}-${brand}`);
                 if (!cell) {
                   return (

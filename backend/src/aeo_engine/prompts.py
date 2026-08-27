@@ -1,226 +1,224 @@
 """Multi-dimension prompt corpus for AEO evaluation.
 
+Prompts are GENERIC templates. No brand or category is hardcoded.
+The corpus is generated dynamically for any brand + category + competitors.
+
 Prompt types:
   - direct:       General "best tool" recommendation queries
   - comparative:  Head-to-head brand comparisons
   - use_case:     Specific context / use-case queries
   - feature:      Feature-specific queries
   - negative:     Negative framing (stress test brand resilience)
-
-Each type has symmetric pairs (brand order swapped) to isolate positional bias.
 """
+
+from __future__ import annotations
+
+import random
 
 from aeo_engine.models import PromptRecord, PromptType
 
-_FOCUS_BRAND = "Linear"
-_COMPETITORS = ["Jira", "Asana", "Monday", "Notion"]
-_ALL_BRANDS = [_FOCUS_BRAND] + _COMPETITORS
 
-# ── Direct prompts ──────────────────────────────────────────────────────────
+def _id(prefix: str, index: int, inverted: bool = False) -> str:
+    suffix = "-inv" if inverted else ""
+    return f"{prefix}-{index:02d}{suffix}"
 
-_DIRECT = [
-    PromptRecord(
-        id="direct-01",
-        prompt_type=PromptType.DIRECT,
-        text=(
-            "What is the best project management tool in 2025? "
-            "Consider Linear, Jira, Asana, Monday, and Notion. "
-            "Recommend the top one and explain why."
-        ),
-    ),
-    PromptRecord(
-        id="direct-01-inv",
-        prompt_type=PromptType.DIRECT,
-        text=(
-            "What is the best project management tool in 2025? "
-            "Consider Jira, Linear, Asana, Monday, and Notion. "
-            "Recommend the top one and explain why."
-        ),
-        inverted=True,
-    ),
-    PromptRecord(
-        id="direct-02",
-        prompt_type=PromptType.DIRECT,
-        text=(
-            "If you could only pick one project management platform "
-            "for a software team, which would it be among "
-            "Linear, Jira, Asana, Monday, and Notion?"
-        ),
-    ),
-    PromptRecord(
-        id="direct-02-inv",
-        prompt_type=PromptType.DIRECT,
-        text=(
-            "If you could only pick one project management platform "
-            "for a software team, which would it be among "
-            "Jira, Linear, Asana, Monday, and Notion?"
-        ),
-        inverted=True,
-    ),
-]
 
-# ── Comparative prompts ─────────────────────────────────────────────────────
+def generate_corpus(
+    brand: str,
+    category: str,
+    competitors: list[str],
+) -> list[PromptRecord]:
+    """Generate the full prompt corpus for any brand + category + competitors.
 
-_COMPARATIVE = [
-    PromptRecord(
-        id="comp-01",
-        prompt_type=PromptType.COMPARATIVE,
-        text="Linear vs Jira: which one is better for a growing software team and why?",
-    ),
-    PromptRecord(
-        id="comp-01-inv",
-        prompt_type=PromptType.COMPARATIVE,
-        text="Jira vs Linear: which one is better for a growing software team and why?",
-        inverted=True,
-    ),
-    PromptRecord(
-        id="comp-02",
-        prompt_type=PromptType.COMPARATIVE,
-        text=(
-            "I'm choosing between Linear and Notion for issue tracking. "
+    Each prompt type has 2 base prompts × 2 orderings = 4 prompts per type.
+    Total: 5 types × 4 = 20 prompts.
+    """
+    all_brands = [brand] + competitors
+    corpus: list[PromptRecord] = []
+
+    # ── Direct prompts ──────────────────────────────────────────────────
+
+    direct_templates = [
+        (
+            "What is the best {category} tool in 2025? "
+            "Consider {brand_list}. Recommend the top one and explain why."
+        ),
+        (
+            "If you could only pick one {category} platform "
+            "for your team, which would it be among {brand_list}?"
+        ),
+    ]
+
+    for i, template in enumerate(direct_templates, 1):
+        brand_list = ", ".join(all_brands)
+        inverted_list = ", ".join([competitors[0], brand] + competitors[1:])
+        corpus.append(
+            PromptRecord(
+                id=_id("direct", i),
+                prompt_type=PromptType.DIRECT,
+                text=template.format(category=category, brand_list=brand_list),
+            )
+        )
+        corpus.append(
+            PromptRecord(
+                id=_id("direct", i, inverted=True),
+                prompt_type=PromptType.DIRECT,
+                text=template.format(category=category, brand_list=inverted_list),
+                inverted=True,
+            )
+        )
+
+    # ── Comparative prompts ─────────────────────────────────────────────
+
+    comparative_templates = [
+        (
+            "{brand} vs {competitor}: which one is better "
+            "for a growing team and why?"
+        ),
+        (
+            "I'm choosing between {brand} and {competitor} for {category}. "
             "Which should I pick and what are the key differences?"
         ),
-    ),
-    PromptRecord(
-        id="comp-02-inv",
-        prompt_type=PromptType.COMPARATIVE,
-        text=(
-            "I'm choosing between Notion and Linear for issue tracking. "
-            "Which should I pick and what are the key differences?"
-        ),
-        inverted=True,
-    ),
-]
+    ]
 
-# ── Use-case prompts ────────────────────────────────────────────────────────
+    for i, template in enumerate(comparative_templates, 1):
+        competitor = competitors[0]
+        corpus.append(
+            PromptRecord(
+                id=_id("comp", i),
+                prompt_type=PromptType.COMPARATIVE,
+                text=template.format(
+                    brand=brand, competitor=competitor, category=category
+                ),
+            )
+        )
+        corpus.append(
+            PromptRecord(
+                id=_id("comp", i, inverted=True),
+                prompt_type=PromptType.COMPARATIVE,
+                text=template.format(
+                    brand=competitor, competitor=brand, category=category
+                ),
+                inverted=True,
+            )
+        )
 
-_USE_CASE = [
-    PromptRecord(
-        id="uc-01",
-        prompt_type=PromptType.USE_CASE,
-        text=(
-            "What's the best project management tool for a startup "
-            "of 10 software engineers that moves fast and values simplicity?"
+    # ── Use-case prompts ────────────────────────────────────────────────
+
+    use_case_templates = [
+        (
+            "What's the best {category} tool for a startup "
+            "of 10 engineers that moves fast and values simplicity?"
         ),
-    ),
-    PromptRecord(
-        id="uc-01-inv",
-        prompt_type=PromptType.USE_CASE,
-        text=(
-            "What's the best project management tool for a startup "
-            "of 10 software engineers that values simplicity and moves fast?"
-        ),
-        inverted=True,
-    ),
-    PromptRecord(
-        id="uc-02",
-        prompt_type=PromptType.USE_CASE,
-        text=(
+        (
             "We're a remote team of 25 developers. We need something "
             "for sprint planning and bug tracking. What do you recommend "
-            "from Linear, Jira, Asana, Monday, or Notion?"
+            "from {brand_list}?"
         ),
-    ),
-    PromptRecord(
-        id="uc-02-inv",
-        prompt_type=PromptType.USE_CASE,
-        text=(
-            "We're a remote team of 25 developers. We need something "
-            "for sprint planning and bug tracking. What do you recommend "
-            "from Jira, Linear, Asana, Monday, or Notion?"
-        ),
-        inverted=True,
-    ),
-]
+    ]
 
-# ── Feature prompts ─────────────────────────────────────────────────────────
+    for i, template in enumerate(use_case_templates, 1):
+        brand_list = ", ".join(all_brands)
+        inverted_list = ", ".join([competitors[0], brand] + competitors[1:])
+        corpus.append(
+            PromptRecord(
+                id=_id("uc", i),
+                prompt_type=PromptType.USE_CASE,
+                text=template.format(category=category, brand_list=brand_list),
+            )
+        )
+        corpus.append(
+            PromptRecord(
+                id=_id("uc", i, inverted=True),
+                prompt_type=PromptType.USE_CASE,
+                text=template.format(category=category, brand_list=inverted_list),
+                inverted=True,
+            )
+        )
 
-_FEATURE = [
-    PromptRecord(
-        id="feat-01",
-        prompt_type=PromptType.FEATURE,
-        text=(
-            "Which project management tool has the best developer experience "
-            "and keyboard-driven workflow? Compare Linear, Jira, Asana, "
-            "Monday, and Notion."
-        ),
-    ),
-    PromptRecord(
-        id="feat-01-inv",
-        prompt_type=PromptType.FEATURE,
-        text=(
-            "Which project management tool has the best keyboard-driven workflow "
-            "and developer experience? Compare Jira, Linear, Asana, "
-            "Monday, and Notion."
-        ),
-        inverted=True,
-    ),
-    PromptRecord(
-        id="feat-02",
-        prompt_type=PromptType.FEATURE,
-        text=(
-            "I need a fast, minimal project management tool with good "
-            "GitHub integration. Which is best: Linear, Jira, Asana, "
-            "Monday, or Notion?"
-        ),
-    ),
-    PromptRecord(
-        id="feat-02-inv",
-        prompt_type=PromptType.FEATURE,
-        text=(
-            "I need a minimal, fast project management tool with good "
-            "GitHub integration. Which is best: Jira, Linear, Asana, "
-            "Monday, or Notion?"
-        ),
-        inverted=True,
-    ),
-]
+    # ── Feature prompts ─────────────────────────────────────────────────
 
-# ── Negative prompts ────────────────────────────────────────────────────────
-
-_NEGATIVE = [
-    PromptRecord(
-        id="neg-01",
-        prompt_type=PromptType.NEGATIVE,
-        text=(
-            "What are the reasons NOT to use Linear for project management? "
-            "What are its weaknesses compared to Jira, Asana, Monday, and Notion?"
+    feature_templates = [
+        (
+            "Which {category} tool has the best developer experience "
+            "and keyboard-driven workflow? Compare {brand_list}."
         ),
-    ),
-    PromptRecord(
-        id="neg-01-inv",
-        prompt_type=PromptType.NEGATIVE,
-        text=(
-            "What are the reasons NOT to use Linear for project management? "
-            "What are its weaknesses compared to Notion, Monday, Asana, and Jira?"
+        (
+            "I need a fast, minimal {category} tool with good "
+            "integration. Which is best: {brand_list}?"
         ),
-        inverted=True,
-    ),
-    PromptRecord(
-        id="neg-02",
-        prompt_type=PromptType.NEGATIVE,
-        text=(
-            "I've heard Linear is overhyped. Convince me that Jira, Asana, "
-            "Monday, or Notion would be a better choice for my team."
+    ]
+
+    for i, template in enumerate(feature_templates, 1):
+        brand_list = ", ".join(all_brands)
+        inverted_list = ", ".join([competitors[0], brand] + competitors[1:])
+        corpus.append(
+            PromptRecord(
+                id=_id("feat", i),
+                prompt_type=PromptType.FEATURE,
+                text=template.format(category=category, brand_list=brand_list),
+            )
+        )
+        corpus.append(
+            PromptRecord(
+                id=_id("feat", i, inverted=True),
+                prompt_type=PromptType.FEATURE,
+                text=template.format(category=category, brand_list=inverted_list),
+                inverted=True,
+            )
+        )
+
+    # ── Negative prompts ────────────────────────────────────────────────
+
+    negative_templates = [
+        (
+            "What are the reasons NOT to use {brand} for {category}? "
+            "What are its weaknesses compared to {competitor_list}?"
         ),
-    ),
-    PromptRecord(
-        id="neg-02-inv",
-        prompt_type=PromptType.NEGATIVE,
-        text=(
-            "I've heard Linear is overhyped. Convince me that Notion, Monday, "
-            "Asana, or Jira would be a better choice for my team."
+        (
+            "I've heard {brand} is overhyped. Convince me that "
+            "{competitor_list} would be a better choice for my team."
         ),
-        inverted=True,
-    ),
-]
+    ]
 
-ALL_PROMPTS: list[PromptRecord] = _DIRECT + _COMPARATIVE + _USE_CASE + _FEATURE + _NEGATIVE
+    for i, template in enumerate(negative_templates, 1):
+        competitor_list = ", ".join(competitors)
+        # For the second prompt, shuffle competitor order for variety
+        shuffled = competitors.copy()
+        random.shuffle(shuffled)
+        shuffled_list = ", ".join(shuffled)
+        corpus.append(
+            PromptRecord(
+                id=_id("neg", i),
+                prompt_type=PromptType.NEGATIVE,
+                text=template.format(
+                    brand=brand,
+                    category=category,
+                    competitor_list=competitor_list,
+                ),
+            )
+        )
+        corpus.append(
+            PromptRecord(
+                id=_id("neg", i, inverted=True),
+                prompt_type=PromptType.NEGATIVE,
+                text=template.format(
+                    brand=brand,
+                    category=category,
+                    competitor_list=shuffled_list,
+                ),
+                inverted=True,
+            )
+        )
 
-PROMPTS_BY_TYPE: dict[PromptType, list[PromptRecord]] = {
-    pt: [p for p in ALL_PROMPTS if p.prompt_type == pt] for pt in PromptType
-}
+    return corpus
 
-FOCUS_BRAND = _FOCUS_BRAND
-COMPETITORS = _COMPETITORS
-ALL_BRANDS = _ALL_BRANDS
+
+def get_corpus_by_type(
+    corpus: list[PromptRecord],
+) -> dict[PromptType, list[PromptRecord]]:
+    """Group prompts by type."""
+    return {
+        pt: [p for p in corpus if p.prompt_type == pt]
+        for pt in PromptType
+    }

@@ -29,4 +29,4 @@ async def test_call_gemini_returns_response() -> None:
         assert result.evaluation_id == "eval-1"
         assert result.prompt_id == "direct-01"
         assert result.run_index == 1
-        assert result.model_id == "gemini-2.0-flash"
+        assert result.model_id == "gemini-3.6-flash"
