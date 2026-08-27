@@ -82,12 +82,34 @@ def test_save_grounding_sources_persists_rows_and_links_supports() -> None:
     chunk_index from the inserted source rows."""
     fake = _FakeClient(
         sources_data=[
-            {"id": "src-row-1", "response_id": "resp-1", "web_title": "Linear Review 2025 - linear.app", "domain": "linear.app"},
-            {"id": "src-row-2", "response_id": "resp-1", "web_title": "Compare Tools | G2.com", "domain": "g2.com"},
+            {
+                "id": "src-row-1",
+                "response_id": "resp-1",
+                "web_title": "Linear Review 2025 - linear.app",
+                "domain": "linear.app",
+            },
+            {
+                "id": "src-row-2",
+                "response_id": "resp-1",
+                "web_title": "Compare Tools | G2.com",
+                "domain": "g2.com",
+            },
         ],
         supports_data=[
-            {"id": "sup-1", "response_id": "resp-1", "source_id": "src-row-1", "segment_start": 0, "segment_end": 52},
-            {"id": "sup-2", "response_id": "resp-1", "source_id": "src-row-2", "segment_start": 60, "segment_end": 120},
+            {
+                "id": "sup-1",
+                "response_id": "resp-1",
+                "source_id": "src-row-1",
+                "segment_start": 0,
+                "segment_end": 52,
+            },
+            {
+                "id": "sup-2",
+                "response_id": "resp-1",
+                "source_id": "src-row-2",
+                "segment_start": 60,
+                "segment_end": 120,
+            },
         ],
     )
 
@@ -100,15 +122,29 @@ def test_save_grounding_sources_persists_rows_and_links_supports() -> None:
     # Exact source payload: response_id + web_title + domain (no chunk_index leak).
     assert sources_table.insert_payloads == [
         [
-            {"response_id": "resp-1", "web_title": "Linear Review 2025 - linear.app", "domain": "linear.app"},
+            {
+                "response_id": "resp-1",
+                "web_title": "Linear Review 2025 - linear.app",
+                "domain": "linear.app",
+            },
             {"response_id": "resp-1", "web_title": "Compare Tools | G2.com", "domain": "g2.com"},
         ]
     ]
     # Supports link to the source row their chunk cited (chunk 0 -> src-row-1...).
     assert supports_table.insert_payloads == [
         [
-            {"response_id": "resp-1", "source_id": "src-row-1", "segment_start": 0, "segment_end": 52},
-            {"response_id": "resp-1", "source_id": "src-row-2", "segment_start": 60, "segment_end": 120},
+            {
+                "response_id": "resp-1",
+                "source_id": "src-row-1",
+                "segment_start": 0,
+                "segment_end": 52,
+            },
+            {
+                "response_id": "resp-1",
+                "source_id": "src-row-2",
+                "segment_start": 60,
+                "segment_end": 120,
+            },
         ]
     ]
     assert len(result["sources"]) == 2
@@ -121,7 +157,13 @@ def test_save_grounding_sources_unresolved_support_gets_null_source() -> None:
     fake = _FakeClient(
         sources_data=[{"id": "src-row-1", "response_id": "resp-1"}],
         supports_data=[
-            {"id": "sup-1", "response_id": "resp-1", "source_id": None, "segment_start": 0, "segment_end": 52}
+            {
+                "id": "sup-1",
+                "response_id": "resp-1",
+                "source_id": None,
+                "segment_start": 0,
+                "segment_end": 52,
+            }
         ],
     )
     supports = [
