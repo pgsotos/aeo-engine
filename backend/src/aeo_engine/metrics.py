@@ -7,6 +7,7 @@ appropriate for small sample sizes and doesn't require normal approximation.
 from __future__ import annotations
 
 import math
+import statistics
 
 from aeo_engine.models import (
     Classification,
@@ -54,6 +55,18 @@ def compute_share_of_voice(win_rate: float, alternatives: int, total: int) -> fl
         return 0.0
     raw = win_rate + 0.5 * (alternatives / total)
     return min(1.0, max(0.0, raw))
+
+
+def compute_consistency(win_rates: list[float]) -> float | None:
+    """Brand-level consistency: 1 minus the population stddev of per-type DWR.
+
+    The five prompt types are the full population of an evaluation, so the
+    population standard deviation is used. Returns None when fewer than two
+    per-type rates exist — a single rate has no spread to measure.
+    """
+    if len(win_rates) < 2:
+        return None
+    return 1 - statistics.pstdev(win_rates)
 
 
 def compute_metrics(

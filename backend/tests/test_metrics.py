@@ -1,8 +1,11 @@
 """Tests for metrics computation (pure functions)."""
 
+import statistics
+
 import pytest
 
 from aeo_engine.metrics import (
+    compute_consistency,
     compute_metrics,
     compute_share_of_voice,
     wilson_score_interval,
@@ -122,3 +125,27 @@ def test_compute_metrics_populates_share_of_voice() -> None:
     # 1/3 win rate + 0.5 * (1/3 alternatives) = 1/2
     assert metric.share_of_voice == pytest.approx(0.5)
     assert 0.0 <= metric.share_of_voice <= 1.0
+
+
+# ── Consistency Score ────────────────────────────────────────────────────────
+
+
+def test_compute_consistency_zero_variance() -> None:
+    """All per-type DWR identical → perfect consistency (1.0)."""
+    assert compute_consistency([0.8, 0.8, 0.8, 0.8, 0.8]) == pytest.approx(1.0)
+
+
+def test_compute_consistency_varied_rates() -> None:
+    """Consistency = 1 - population stddev of per-type DWR."""
+    rates = [0.5, 0.75, 1.0, 0.25, 0.6]
+    assert compute_consistency(rates) == pytest.approx(1 - statistics.pstdev(rates))
+
+
+def test_compute_consistency_empty_returns_none() -> None:
+    """No per-type rates → not computable, None (never raises)."""
+    assert compute_consistency([]) is None
+
+
+def test_compute_consistency_single_type_returns_none() -> None:
+    """One per-type rate → not computable, None."""
+    assert compute_consistency([0.6]) is None
