@@ -16,6 +16,16 @@ export async function fetchEvaluationDetail(
   return res.json();
 }
 
+export async function fetchCategories(
+  brand: string,
+): Promise<{ brand: string; categories: string[] }> {
+  const res = await fetch(
+    `${API_URL}/api/resolve-category?brand=${encodeURIComponent(brand)}`,
+  );
+  if (!res.ok) throw new Error(`Failed to resolve categories: ${res.status}`);
+  return res.json();
+}
+
 export async function runEvaluation(
   request: EvaluateRequest,
 ): Promise<{ evaluation_id: string; status: string }> {

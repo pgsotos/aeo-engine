@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ConfidenceBar from "./components/ConfidenceBar";
 import Heatmap from "./components/Heatmap";
 import ResponseCard from "./components/ResponseCard";
 import {
+  fetchCategories,
   fetchEvaluationDetail,
   fetchEvaluations,
   runEvaluation,
@@ -43,9 +44,13 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
 
   // Evaluation form state
-  const [brand, setBrand] = useState("Linear");
-  const [category, setCategory] = useState("project management");
-  const [competitors, setCompetitors] = useState("Jira, Asana, Monday, Notion");
+  const [brand, setBrand] = useState("");
+  const [category, setCategory] = useState("");
+  const [competitors, setCompetitors] = useState("");
+  const [categories, setCategories] = useState<string[]>([]);
+  const [resolving, setResolving] = useState(false);
+  const [resolvedBrand, setResolvedBrand] = useState<string | null>(null);
+  const brandInputRef = useRef<HTMLInputElement>(null);
 
   const loadEvaluations = useCallback(async () => {
     try {
@@ -100,24 +105,65 @@ export default function DashboardPage() {
     [loadDetail],
   );
 
+  const handleResolveCategories = useCallback(async () => {
+    const trimmed = brand.trim();
+    if (!trimmed) return;
+
+    // Skip if already resolved for this brand
+    if (resolvedBrand === trimmed && categories.length > 0) return;
+
+    try {
+      setResolving(true);
+      setError(null);
+      setCategory("");
+      const data = await fetchCategories(trimmed);
+      setCategories(data.categories);
+      setResolvedBrand(trimmed);
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "Failed to resolve categories",
+      );
+      setCategories([]);
+      setResolvedBrand(null);
+    } finally {
+      setResolving(false);
+    }
+  }, [brand, resolvedBrand, categories.length]);
+
+  const handleBrandKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        void handleResolveCategories();
+      }
+    },
+    [handleResolveCategories],
+  );
+
+  const canRun = useMemo(() => {
+    return (
+      brand.trim() !== "" &&
+      category !== "" &&
+      competitors.trim() !== "" &&
+      !running &&
+      !resolving
+    );
+  }, [brand, category, competitors, running, resolving]);
+
   const handleRun = useCallback(async () => {
     const competitorList = competitors
       .split(",")
       .map((c) => c.trim())
       .filter(Boolean);
 
-    if (!brand.trim()) {
-      setError("Brand is required");
-      return;
-    }
-    if (competitorList.length === 0) {
-      setError("At least one competitor is required");
+    if (!brand.trim() || !category || competitorList.length === 0) {
+      setError("All fields are required");
       return;
     }
 
     const request: EvaluateRequest = {
       brand: brand.trim(),
-      category: category.trim(),
+      category,
       competitors: competitorList,
     };
 
@@ -132,13 +178,6 @@ export default function DashboardPage() {
       setRunning(false);
     }
   }, [brand, category, competitors, loadEvaluations]);
-
-  // Dynamic brand list from the selected evaluation
-  const evaluationBrands = useMemo(() => {
-    if (!dashboard) return [];
-    const brands = new Set(dashboard.metrics.map((m) => m.brand));
-    return Array.from(brands);
-  }, [dashboard]);
 
   // Metrics for the focus brand
   const focusMetrics = useMemo(() => {
@@ -201,32 +240,87 @@ export default function DashboardPage() {
                 New Evaluation
               </h2>
               <div className="grid gap-4 sm:grid-cols-3">
+                {/* Brand input */}
                 <div>
                   <label htmlFor="brand" className="mb-1 block text-sm text-zinc-400">
-                    Brand to measure
+                    Brand
                   </label>
-                  <input
-                    id="brand"
-                    type="text"
-                    value={brand}
-                    onChange={(e) => setBrand(e.target.value)}
-                    className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    placeholder="e.g. Linear, Sony, Notion"
-                  />
+                  <div className="flex gap-2">
+                    <input
+                      ref={brandInputRef}
+                      id="brand"
+                      type="text"
+                      value={brand}
+                      onChange={(e) => {
+                        setBrand(e.target.value);
+                        // Reset categories when brand changes
+                        if (e.target.value !== resolvedBrand) {
+                          setCategories([]);
+                          setCategory("");
+                          setResolvedBrand(null);
+                        }
+                      }}
+                      onBlur={handleResolveCategories}
+                      onKeyDown={handleBrandKeyDown}
+                      className="flex-1 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      placeholder="e.g. Linear, Sony, Notion"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleResolveCategories}
+                      disabled={resolving || !brand.trim()}
+                      className="inline-flex items-center justify-center rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-300 transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {resolving ? (
+                        <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                      ) : (
+                        "Resolve"
+                      )}
+                    </button>
+                  </div>
                 </div>
+
+                {/* Category — select from resolved list, or disabled placeholder */}
                 <div>
                   <label htmlFor="category" className="mb-1 block text-sm text-zinc-400">
                     Category
                   </label>
-                  <input
-                    id="category"
-                    type="text"
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                    className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    placeholder="e.g. project management, TVs, CRM"
-                  />
+                  {categories.length > 0 ? (
+                    <select
+                      id="category"
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value)}
+                      className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    >
+                      <option value="" disabled>
+                        Select a category…
+                      </option>
+                      {categories.map((cat) => (
+                        <option key={cat} value={cat}>
+                          {cat}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      id="category"
+                      type="text"
+                      disabled
+                      value=""
+                      className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-500"
+                      placeholder={
+                        resolving
+                          ? "Resolving categories…"
+                          : "Enter a brand first"
+                      }
+                    />
+                  )}
                 </div>
+
+                {/* Competitors */}
                 <div>
                   <label htmlFor="competitors" className="mb-1 block text-sm text-zinc-400">
                     Competitors (comma-separated)
@@ -241,10 +335,18 @@ export default function DashboardPage() {
                   />
                 </div>
               </div>
+
+              {/* Status hint */}
+              {resolvedBrand && categories.length > 0 && (
+                <p className="mt-2 text-xs text-zinc-500">
+                  Categories resolved for &quot;{resolvedBrand}&quot; — select one above
+                </p>
+              )}
+
               <button
                 type="button"
                 onClick={handleRun}
-                disabled={running}
+                disabled={!canRun}
                 className="mt-4 inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {running ? (

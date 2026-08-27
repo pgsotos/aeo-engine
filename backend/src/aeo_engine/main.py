@@ -24,7 +24,7 @@ from aeo_engine.database import (
     save_responses,
     update_evaluation,
 )
-from aeo_engine.gemini import run_parallel_sampling
+from aeo_engine.gemini import resolve_brand_categories, run_parallel_sampling
 from aeo_engine.metrics import compute_per_type_metrics
 from aeo_engine.models import Evaluation, PromptType
 from aeo_engine.prompts import generate_corpus, get_corpus_by_type
@@ -58,6 +58,26 @@ app.add_middleware(
 async def health() -> dict:
     """Health check endpoint."""
     return {"status": "ok", "gemini_configured": bool(settings.gemini_api_key)}
+
+
+@app.get("/api/resolve-category")
+async def resolve_category(brand: str) -> dict:
+    """Resolve what product/service categories a brand belongs to.
+
+    Uses Gemini to infer the correct categories for the given brand.
+    The frontend must use this list to constrain user selection.
+    """
+    if not brand.strip():
+        raise HTTPException(status_code=400, detail="brand is required")
+
+    categories = await resolve_brand_categories(brand.strip())
+    if not categories:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Could not resolve categories for '{brand}'",
+        )
+
+    return {"brand": brand.strip(), "categories": categories}
 
 
 @app.get("/api/evaluations")

@@ -58,6 +58,41 @@ async def call_gemini(
     )
 
 
+async def resolve_brand_categories(brand: str) -> list[str]:
+    """Ask Gemini what product/service categories a brand belongs to.
+
+    Returns a list of category strings. Uses low temperature for consistency.
+    This is a single cheap call — not part of the evaluation pipeline.
+    """
+
+    prompt = (
+        f'What product or service categories does the brand "{brand}" belong to? '
+        "Return ONLY a comma-separated list of categories, nothing else. "
+        "Use lowercase. For example: "
+        '"Linear" -> "project management, issue tracking, team collaboration" '
+        '"Sony" -> "televisions, audio equipment, cameras, gaming consoles" '
+        '"Notion" -> "note-taking, project management, documentation, knowledge base"'
+    )
+
+    def _sync_call() -> str:
+        client = _get_client()
+        response = client.models.generate_content(
+            model=DEFAULT_MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.3,
+                max_output_tokens=128,
+            ),
+        )
+        return response.text or ""
+
+    raw = await asyncio.to_thread(_sync_call)
+
+    # Parse comma-separated response, strip whitespace, filter empties
+    categories = [c.strip().strip('"').strip("'") for c in raw.split(",")]
+    return [c for c in categories if c]
+
+
 async def run_parallel_sampling(
     prompt: str,
     prompt_id: str,
