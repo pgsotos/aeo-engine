@@ -175,6 +175,57 @@ directory ownership during work; this ADR adds the human-gate before merge.
 
 ---
 
+## ADR-009 — Simplified stack for technical test scope
+
+**Status:** Accepted
+
+**Context:** The original architecture included ClickHouse, Temporal.io, Redis,
+and a 5-agent team with file-ownership guards. This is a technical test with a
+2-day deadline, developed by a single person.
+
+**Decision:** Use a minimal stack: FastAPI + Gemini API + Supabase (hosted
+Postgres). No local infrastructure. Two specialist agents
+(`backend-agent`, `frontend-agent`) instead of five.
+
+**Consequences:** Faster to build and deploy. ClickHouse, Temporal, and Redis
+can be added post-deliverable if the project scales. The agent team can grow
+as needed.
+
+---
+
+## ADR-010 — Multi-dimension prompt analysis
+
+**Status:** Accepted
+
+**Context:** A single "best tool" prompt does not capture how brand visibility
+varies by query type. The enunciado encourages creativity.
+
+**Decision:** Prompts span 5 types: direct, comparative, use_case, feature,
+negative. Each type has symmetric pairs (brand order swapped) to isolate
+positional bias. Win Rate is reported per type, creating a heatmap
+visualization.
+
+**Consequences:** 20 prompts × 8 runs = 160 API calls per evaluation. Cost is
+acceptable for the insight gained: shows WHERE Linear wins and WHERE it loses,
+not just an overall number.
+
+---
+
+## ADR-011 — Gemini 3.6 Flash as the measured engine
+
+**Status:** Accepted
+
+**Context:** The enunciado specifies Gemini as the AI engine. The available
+model at development time is `gemini-3.6-flash`.
+
+**Decision:** Use `gemini-3.6-flash` for all evaluations. Model ID is stored
+with each response for auditability.
+
+**Consequences:** Model version affects results. Cross-evaluation comparisons
+are only valid when using the same model version. This is documented in ASM-002.
+
+---
+
 ## Section 2 — Assumptions (ASM)
 
 Assumptions are things taken as true without full proof. Each carries a risk if
@@ -289,9 +340,27 @@ this is additive.
 citation saturation, change-point detection on Win Rate.
 
 **Why:** requires sustained scheduled collection and a body of historical data
-that does not exist yet. ClickHouse schemas (M4) are designed to support this
-later (time-partitioned `MergeTree`), but the analysis itself is not built.
+that does not exist yet. Supabase schemas are designed to support this later,
+but the analysis itself is not built.
 
 **To bring in:** the predictive forecasting innovation module — depends on
 OOS-001 (scheduled evaluations) and accumulated history.
+
+---
+
+## OOS-004 — Local infrastructure (ClickHouse, Temporal, Redis)
+
+**Status:** Excluded (simplified per ADR-009)
+
+**Excluded:** local Docker infrastructure with ClickHouse (OLAP), Temporal.io
+(workflow orchestration), and Redis (broker/cache). Originally planned for
+milestones 2–4.
+
+**Why:** the technical test scope does not require distributed workflow
+orchestration or columnar analytics. Supabase (hosted Postgres) handles
+persistence. asyncio handles parallelism.
+
+**To bring in:** if the platform scales to scheduled evaluations across multiple
+brands/engines, Temporal would own the fan-out and ClickHouse would handle
+metric aggregation.
 

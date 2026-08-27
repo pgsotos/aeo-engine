@@ -22,8 +22,7 @@ frontend/out/
 dist/
 build/
 
-# Data / local infra volumes
-.volumes/
+# Data
 *.log
 
 # Editor / OS
@@ -31,12 +30,5 @@ build/
 .idea/
 .vscode/
 
-# Claude Code machine-local settings (shared config goes in .claude/settings.json)
-.claude/settings.local.json
-
-# Tooling caches (repo-local, not project source)
-.atl/
-headroom-*
-# Root-level Node tooling manifest (headroom MCP), not part of the monorepo apps
-/package.json
-/package-lock.json
+# Supabase CLI temp
+supabase/.temp/
