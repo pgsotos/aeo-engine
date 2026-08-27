@@ -12,6 +12,8 @@ from google.genai import types
 from aeo_engine.config import settings
 from aeo_engine.models import GeminiResponse
 
+DEFAULT_MODEL = "gemini-3.6-flash"
+
 
 def _get_client() -> genai.Client:
     """Create a Gemini client from settings."""
@@ -23,7 +25,7 @@ async def call_gemini(
     evaluation_id: str,
     prompt_id: str,
     run_index: int,
-    model: str = "gemini-2.0-flash",
+    model: str = DEFAULT_MODEL,
 ) -> GeminiResponse:
     """Make a single async call to Gemini and return the raw response.
 
@@ -61,7 +63,7 @@ async def run_parallel_sampling(
     prompt_id: str,
     evaluation_id: str,
     n: int = 8,
-    model: str = "gemini-2.0-flash",
+    model: str = DEFAULT_MODEL,
     concurrency: int = 4,
 ) -> list[GeminiResponse]:
     """Run N independent calls to Gemini with bounded concurrency.
