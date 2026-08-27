@@ -1,0 +1,119 @@
+# aeo-engine — global infrastructure
+#
+# Services:
+#   aeo-redis            FastStream broker + cache (Pub/Sub, no durability)
+#   aeo-postgres         OLTP: users, config, immutable raw_response (Supabase Postgres image)
+#   aeo-clickhouse       OLAP: derived metrics, columnar analytics
+#   aeo-temporal         Durable workflow engine (parallel sampling, retries)
+#   aeo-temporal-postgres Temporal's own persistence (kept separate from app data)
+#   aeo-temporal-ui      Temporal Web UI
+#
+# Full Supabase (Auth, Studio, PostgREST) is NOT here — use a hosted project or
+# the `supabase` CLI. This file provides the Postgres engine only.
+
+name: aeo-engine
+
+services:
+  aeo-redis:
+    image: redis:7-alpine
+    container_name: aeo-redis
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  aeo-postgres:
+    image: supabase/postgres:15.8.1.060
+    container_name: aeo-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-aeo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aeo}
+      POSTGRES_DB: ${POSTGRES_DB:-aeo_engine}
+    volumes:
+      - aeo-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aeo} -d ${POSTGRES_DB:-aeo_engine}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  aeo-clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    container_name: aeo-clickhouse
+    ports:
+      - "8123:8123"   # HTTP
+      - "9000:9000"   # native
+    environment:
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-aeo}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-aeo}
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-aeo_metrics}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    volumes:
+      - aeo-clickhouse-data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  aeo-temporal-postgres:
+    image: postgres:16-alpine
+    container_name: aeo-temporal-postgres
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal
+      POSTGRES_DB: temporal
+    volumes:
+      - aeo-temporal-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  aeo-temporal:
+    image: temporalio/auto-setup:1.25.2
+    container_name: aeo-temporal
+    depends_on:
+      aeo-temporal-postgres:
+        condition: service_healthy
+    ports:
+      - "7233:7233"
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: temporal
+      POSTGRES_SEEDS: aeo-temporal-postgres
+    healthcheck:
+      test: ["CMD", "tctl", "--address", "aeo-temporal:7233", "workflow", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  aeo-temporal-ui:
+    image: temporalio/ui:2.31.2
+    container_name: aeo-temporal-ui
+    depends_on:
+      aeo-temporal:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      TEMPORAL_ADDRESS: aeo-temporal:7233
+      TEMPORAL_CORS_ORIGINS: http://localhost:3000
+
+volumes:
+  aeo-postgres-data:
+  aeo-clickhouse-data:
+  aeo-temporal-postgres-data:
