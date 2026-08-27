@@ -114,12 +114,29 @@ def save_classifications(classifications: list[ClassificationResult]) -> list[di
 
 
 def get_classifications(evaluation_id: str) -> list[dict]:
-    """Get all classifications for an evaluation."""
+    """Get all classifications for an evaluation.
+
+    Classifications don't have evaluation_id directly — join through
+    gemini_responses to filter by evaluation_id.
+    """
     client = get_client()
+
+    # First get all response IDs for this evaluation
+    resp_result = (
+        client.table("gemini_responses")
+        .select("id")
+        .eq("evaluation_id", evaluation_id)
+        .execute()
+    )
+    response_ids = [r["id"] for r in resp_result.data]
+    if not response_ids:
+        return []
+
+    # Then get classifications for those responses
     result = (
         client.table("classifications")
         .select("*")
-        .eq("evaluation_id", evaluation_id)
+        .in_("response_id", response_ids)
         .execute()
     )
     return result.data
