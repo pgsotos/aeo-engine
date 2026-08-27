@@ -102,3 +102,26 @@ class Competitor(BaseModel):
 
     name: str
     reason: str
+
+
+class GroundingSource(BaseModel):
+    """A web source cited by Gemini grounding (one per grounding_chunk)."""
+
+    id: str | None = None  # DB row id, set after insert
+    response_id: str = ""  # FK → gemini_responses.id, assigned by the caller
+    web_title: str
+    domain: str  # parsed from web.title (uri is an opaque redirect token); "" when unparseable
+    chunk_index: int = 0  # position in grounding_chunks (linking aid, not a column)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class GroundingSupport(BaseModel):
+    """A response-text segment backed by grounding (one per grounding_support)."""
+
+    id: str | None = None  # DB row id, set after insert
+    response_id: str = ""  # FK → gemini_responses.id, assigned by the caller
+    source_id: str | None = None  # FK → grounding_sources.id, linked at save time
+    source_chunk_index: int | None = None  # first cited chunk (linking aid, not a column)
+    segment_start: int
+    segment_end: int
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
