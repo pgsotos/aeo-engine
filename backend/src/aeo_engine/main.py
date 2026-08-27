@@ -23,6 +23,7 @@ from aeo_engine.database import (
     get_responses,
     list_evaluations,
     save_classifications,
+    save_grounding_sources,
     save_metrics,
     save_responses,
     update_evaluation,
@@ -41,6 +42,7 @@ from aeo_engine.models import (
     PromptType,
 )
 from aeo_engine.prompts import generate_corpus, get_corpus_by_type
+from aeo_engine.sources import extract_sources, extract_supports
 
 logger = logging.getLogger(__name__)
 
@@ -364,6 +366,21 @@ async def _sample_and_store_prompt(
         semaphore=semaphore,
     )
     save_responses(responses)  # raw responses stored verbatim, immediately
+
+    # Persist grounding (Source Auditor) for any response where Gemini cited
+    # sources. Grounding presence is stochastic, so this is a best-effort pass.
+    for resp in responses:
+        if resp.grounding_metadata:
+            response_id = resp.id or ""
+            sources = [
+                s.model_copy(update={"response_id": response_id})
+                for s in extract_sources(resp.grounding_metadata)
+            ]
+            supports = [
+                sp.model_copy(update={"response_id": response_id})
+                for sp in extract_supports(resp.grounding_metadata)
+            ]
+            save_grounding_sources(response_id, sources, supports)
 
     results = []
     for resp in responses:

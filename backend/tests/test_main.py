@@ -6,17 +6,19 @@ wiring logic under test — focus-brand consistency over per-type DWR and its
 persistence — runs for real.
 """
 
+import asyncio
 import statistics
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
-from aeo_engine.main import _execute_evaluation, app
+from aeo_engine.main import _execute_evaluation, _sample_and_store_prompt, app
 from aeo_engine.models import (
     Classification,
     ClassificationResult,
     Competitor,
+    GeminiResponse,
     MetricSummary,
     PromptRecord,
     PromptType,
@@ -26,6 +28,19 @@ client = TestClient(app)
 
 FOCUS_BRAND = "Linear"
 PER_TYPE_RATES = [0.5, 0.75, 1.0, 0.25, 0.6]
+
+# Google Search grounding shape as persisted by gemini.py (model_dump json).
+GROUNDING = {
+    "grounding_chunks": [
+        {"web": {"title": "Linear Review 2025 | linear.app", "uri": "https://r.redirect/1"}},
+        {"web": {"title": "Compare tools on g2.com", "uri": "https://r.redirect/2"}},
+    ],
+    "grounding_supports": [
+        {"segment": {"start_index": 0, "end_index": 52}, "grounding_chunk_indices": [0]},
+        {"segment": {"start_index": 60, "end_index": 120}, "grounding_chunk_indices": [1]},
+    ],
+    "web_search_queries": [],
+}
 
 
 def _metric(prompt_type: PromptType, brand: str, win_rate: float) -> MetricSummary:
@@ -204,3 +219,62 @@ def test_resolve_competitors_400_on_empty_category() -> None:
         params={"brand": "Linear", "category": ""},
     )
     assert res.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_sample_and_store_persists_grounding_sources() -> None:
+    """Responses with grounding metadata have their sources + supports
+    extracted and persisted once, keyed by the response id. Responses without
+    grounding are skipped entirely."""
+    grounded = GeminiResponse(
+        id="resp-1",
+        evaluation_id="eval-1",
+        prompt_id="direct-01",
+        run_index=1,
+        model_id="gemini-3.6-flash",
+        raw_text="Linear is the best project management tool for teams.",
+        grounding_metadata=GROUNDING,
+    )
+    plain = GeminiResponse(
+        id="resp-2",
+        evaluation_id="eval-1",
+        prompt_id="direct-01",
+        run_index=2,
+        model_id="gemini-3.6-flash",
+        raw_text="Jira is the best project management tool for teams.",
+        grounding_metadata=None,
+    )
+    with (
+        patch("aeo_engine.main.save_responses"),
+        patch("aeo_engine.main.save_grounding_sources") as mock_grounding,
+        patch(
+            "aeo_engine.main.run_parallel_sampling", new_callable=AsyncMock
+        ) as mock_sampling,
+        patch("aeo_engine.main.classify_all_brands") as mock_classify,
+    ):
+        mock_sampling.return_value = [grounded, plain]
+        mock_classify.return_value = []
+
+        await _sample_and_store_prompt(
+            prompt=PromptRecord(
+                id="direct-01",
+                prompt_type=PromptType.DIRECT,
+                text="What is the best project management tool?",
+            ),
+            evaluation_id="eval-1",
+            all_brands=[FOCUS_BRAND, "Jira"],
+            n=2,
+            semaphore=asyncio.Semaphore(1),
+        )
+
+        # Only the grounded response is persisted — exactly once.
+        assert mock_grounding.call_count == 1
+        response_id, sources, supports = mock_grounding.call_args.args
+        assert response_id == "resp-1"
+        assert [s.domain for s in sources] == ["linear.app", "g2.com"]
+        assert [s.chunk_index for s in sources] == [0, 1]
+        assert all(s.response_id == "resp-1" for s in sources)
+        assert [
+            (sp.segment_start, sp.segment_end, sp.source_chunk_index) for sp in supports
+        ] == [(0, 52, 0), (60, 120, 1)]
+        assert all(sp.response_id == "resp-1" for sp in supports)
