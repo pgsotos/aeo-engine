@@ -821,6 +821,45 @@ change to `main` is reviewed and attributable.
 
 ---
 
+## ADR-014 — Share of Voice and Consistency score (strict AEO methodology)
+
+**Status:** Accepted
+
+**Context:** Direct Answer Win Rate alone punishes presence: a brand mentioned
+as an alternative scores zero for the direct answer and is invisible to the
+metric. Decision D2 of the strict-AEO design wanted a "consistency" signal for
+how stable a brand's DWR is across the five prompt types.
+
+**Decision:**
+- **Share of Voice (SoV)** = `win_rate + 0.5 × (alternatives / total)`,
+  **clamped to [0, 1]**. The +0.5 alternative weight rewards presence in answers
+  without equating an alternative mention to a direct win. The clamp overrides
+  the design's natural [0, 1.5] upper bound (user requirement).
+  Zero runs return `0.0` instead of a division by zero.
+- SoV lives on the **`metrics` table** (it is per brand × prompt_type) as
+  `share_of_voice REAL NOT NULL` — existing rows default to NULL until the next
+  evaluation writes them (additive migration `002_strict_aeo.sql`).
+- **Consistency** = `1 − σ` where σ is the **population standard deviation**
+  of the focus brand's five per-type DWR values (`statistics.pstdev`; the five
+  prompt types are the full population, not a sample). `NULL` when fewer than
+  two per-type rates exist (a single rate has no spread to measure) — resolving
+  the ambiguity in the change proposal, which named `0.0`/`1.0` for empty/single
+  while the design and tasks said "None if <2 types".
+- Consistency lives on the **`evaluations` table** (one value per evaluation),
+  NOT on `metrics` — the `metrics.prompt_type` CHECK constraint
+  (`IN ('direct','comparative','use_case','feature','negative')`) forbids a
+  non-type row.
+- DWR stays the **primary** metric; SoV and consistency are complementary.
+- Frontend types are `number | null` because pre-migration rows are NULL on the
+  wire; the UI renders `—` instead of a number.
+
+**Consequences:** Two new columns (nullable, additive migration), two pure
+functions in `metrics.py`, `run_evaluation` persists consistency after
+`save_metrics`, and the dashboard shows SoV as a secondary sky-blue bar
+underneath the DWR bar.
+
+---
+
 ## Section 2 — Assumptions (ASM)
 
 Assumptions are things taken as true without full proof. Each carries a risk if
