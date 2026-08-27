@@ -77,6 +77,7 @@ class MetricSummary(BaseModel):
     prompt_type: PromptType
     brand: str
     win_rate: float
+    share_of_voice: float  # complementary to DWR: win_rate + 0.5 * (alternatives / total)
     ci_lower: float  # confidence interval lower bound
     ci_upper: float  # confidence interval upper bound
     total_runs: int

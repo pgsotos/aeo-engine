@@ -1,8 +1,13 @@
 """Tests for metrics computation (pure functions)."""
 
-from aeo_engine.metrics import wilson_score_interval
+import pytest
+
+from aeo_engine.metrics import (
+    compute_metrics,
+    compute_share_of_voice,
+    wilson_score_interval,
+)
 from aeo_engine.models import Classification, ClassificationResult, PromptType
-from aeo_engine.metrics import compute_metrics
 
 
 def test_wilson_score_perfect_score() -> None:
@@ -64,3 +69,56 @@ def test_compute_metrics_basic() -> None:
     assert metric.omitted == 1
     assert 0.0 <= metric.win_rate <= 1.0
     assert metric.ci_lower <= metric.win_rate <= metric.ci_upper
+
+
+# ── Share of Voice ──────────────────────────────────────────────────────────
+
+
+def test_share_of_voice_no_alternatives() -> None:
+    """No alternative mentions → SoV equals the win rate."""
+    assert compute_share_of_voice(0.5, 0, 8) == pytest.approx(0.5)
+
+
+def test_share_of_voice_all_alternatives() -> None:
+    """Every run is an alternative mention → SoV is half the win-rate weight."""
+    assert compute_share_of_voice(0.0, 8, 8) == pytest.approx(0.5)
+
+
+def test_share_of_voice_formula() -> None:
+    """SoV = win_rate + 0.5 * (alternatives / total)."""
+    assert compute_share_of_voice(0.4, 3, 8) == pytest.approx(0.4 + 0.5 * (3 / 8))
+
+
+def test_share_of_voice_clamped_at_one() -> None:
+    """Perfect win rate plus alternatives must not push SoV above 1.0."""
+    assert compute_share_of_voice(1.0, 4, 8) == pytest.approx(1.0)
+
+
+def test_share_of_voice_zero_runs() -> None:
+    """No runs → SoV is 0.0 (no division by zero)."""
+    assert compute_share_of_voice(0.0, 0, 0) == pytest.approx(0.0)
+
+
+def test_compute_metrics_populates_share_of_voice() -> None:
+    """compute_metrics wires SoV from direct wins and alternative mentions."""
+    classifications = [
+        ClassificationResult(
+            response_id="r1",
+            brand="Linear",
+            classification=Classification.DIRECT_WINNER,
+        ),
+        ClassificationResult(
+            response_id="r2",
+            brand="Linear",
+            classification=Classification.ALTERNATIVE_MENTION,
+        ),
+        ClassificationResult(
+            response_id="r3",
+            brand="Linear",
+            classification=Classification.OMITTED,
+        ),
+    ]
+    metric = compute_metrics(classifications, PromptType.DIRECT, "eval-1", "Linear")
+    # 1/3 win rate + 0.5 * (1/3 alternatives) = 1/2
+    assert metric.share_of_voice == pytest.approx(0.5)
+    assert 0.0 <= metric.share_of_voice <= 1.0
