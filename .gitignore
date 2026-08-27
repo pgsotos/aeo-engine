@@ -33,6 +33,9 @@ build/
 # Supabase CLI temp
 supabase/.temp/
 
+# CodeGraph local index
+.codegraph/
+
 # Local tooling artifacts
 .atl/
 .playwright-cli/

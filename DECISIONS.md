@@ -59,53 +59,68 @@ over crawled pages.
 
 ## ADR-003 — FastStream + Redis for inter-service messaging
 
-**Status:** Accepted
+**Status:** Superseded by ADR-009 (2026)
 
 **Context:** Backend work splits into collection, extraction, and aggregation
 stages that should scale and fail independently.
 
-**Decision:** Python services built with FastStream, communicating over Redis
-Pub/Sub. Redis also serves as a short-lived cache.
+**Decision (original):** Python services built with FastStream, communicating
+over Redis Pub/Sub. Redis also serves as a short-lived cache.
 
-**Consequences:** Lightweight broker, no extra infra beyond Redis. Redis
-Pub/Sub has no durability — anything that must survive a crash goes through
-Temporal or Postgres, never the broker alone.
+**Revision:** This architecture was **abandoned** in ADR-009. The project now
+uses a single FastAPI service with asyncio for parallelism — no message broker
+or Redis. This ADR is kept for history only; do not re-introduce Redis or
+FastStream without a new decision.
+
+**Consequences (original):** Lightweight broker, no extra infra beyond Redis.
+Redis Pub/Sub has no durability — anything that must survive a crash goes
+through Temporal or Postgres, never the broker alone.
 
 ---
 
 ## ADR-004 — Temporal.io for sampling orchestration
 
-**Status:** Accepted
+**Status:** Superseded by ADR-009 (2026)
 
 **Context:** The analytical method requires N independent parallel runs per
 prompt, with retries and durability, so partial failures do not corrupt a
 metric.
 
-**Decision:** Temporal.io workflows own the fan-out of N runs per prompt,
-retry policy, and result collection. Workflow code is deterministic; all I/O
-(Gemini calls, DB writes) lives in activities.
+**Decision (original):** Temporal.io workflows own the fan-out of N runs per
+prompt, retry policy, and result collection. Workflow code is deterministic; all
+I/O (Gemini calls, DB writes) lives in activities.
 
-**Consequences:** Adds a Temporal server + its own Postgres to the infra. This
-cost is accepted because parallel sampling with retries is exactly Temporal's
-use case and maps directly to a project requirement, not just future needs.
+**Revision:** This was **abandoned** in ADR-009. The project uses asyncio
+(`asyncio.gather`) for parallel sampling. Temporal is not running and is not
+planned for the deliverable. This ADR is kept for history only.
+
+**Consequences (original):** Adds a Temporal server + its own Postgres to the
+infra. This cost is accepted because parallel sampling with retries is exactly
+Temporal's use case and maps directly to a project requirement, not just future
+needs.
 
 ---
 
 ## ADR-005 — Immutable OLTP (Supabase / PostgreSQL) + OLAP (ClickHouse)
 
-**Status:** Accepted
+**Status:** Superseded by ADR-009 (2026)
 
 **Context:** Raw Gemini responses must be preserved verbatim for auditability.
 Derived metrics need fast columnar aggregation across many runs.
 
-**Decision:** Postgres (via Supabase) stores users, config, and an append-only
-`raw_response` table — no updates, no deletes. Derived metrics are batch-ingested
-into ClickHouse for analytics. The OLAP write path sits behind a `MetricsSink`
-interface.
+**Decision (original):** Postgres (via Supabase) stores users, config, and an
+append-only `raw_response` table — no updates, no deletes. Derived metrics are
+batch-ingested into ClickHouse for analytics. The OLAP write path sits behind a
+`MetricsSink` interface.
 
-**Consequences:** Two stores to operate. `raw_response` rows are immutable by
-convention and by DB permissions. In milestone 1 only Postgres is wired;
-ClickHouse joins in milestone 4.
+**Revision:** The immutable OLTP half (append-only `gemini_responses` table) is
+**kept** — it is a core project rule. The ClickHouse OLAP half was **abandoned**
+in ADR-009; metrics are computed on read from Postgres with no separate OLAP
+store. This ADR is kept for history of the ClickHouse decision.
+
+**Consequences (original):** Two stores to operate. `raw_response` rows are
+immutable by convention and by DB permissions. In milestone 1 only Postgres is
+wired; ClickHouse joins in milestone 4.
 
 Local Postgres runs as **plain `postgres:16-alpine`**, not `supabase/postgres`.
 The Supabase image ships its own `pg_hba.conf` with `peer map=supabase_map` and
@@ -226,6 +241,52 @@ are only valid when using the same model version. This is documented in ASM-002.
 
 ---
 
+## ADR-012 — Generic AEO engine (no hardcoded brands)
+
+**Status:** Accepted
+
+**Context:** The initial design centered on a fixed focus brand (Linear) with a
+hardcoded competitive set. The user required the platform to work for any brand
+or category (e.g. Sony in TVs, Linear in PM tools), not just the challenge's
+focus.
+
+**Decision:** The engine is fully generic. Brand, category, and competitors are
+dynamic inputs to `POST /api/evaluate`. Prompt corpus generation
+(`prompts.py`) is template-based and produces the 5 prompt types × inverted
+pairs for any brand/category. Gemini resolves brand→categories and
+brand→competitors dynamically. No brand names are hardcoded anywhere in
+`backend/`.
+
+**Consequences:** Any brand/category can be evaluated without code changes. The
+challenge's original hardcoded fixtures (Linear, Jira, Asana, Monday, Notion)
+are no longer baked in — they are just the default input values. This supersedes
+the hardcoded-category assumption in ASM-001 (now revised below).
+
+---
+
+## ADR-013 — Git Flow branching (main → develop → feature/*)
+
+**Status:** Accepted
+
+**Context:** Multiple agents write to one monorepo. The old workflow used a
+`feature/hito-2-*` branch as the de facto default and had no stable integration
+branch.
+
+**Decision:** Standard Git Flow:
+- `main` is the default branch and holds production/stable code.
+- `develop` is the integration branch, created from `main`.
+- All work happens on `feature/<slug>` branches created from `develop`.
+- `feature` → `develop` for integration; `develop` → `main` for release.
+- No direct commits to `main` or `develop`. See ADR-008 for the merge
+  governance (team-lead audit + qa approval).
+
+**Consequences:** A stable `main` that is always deployable, an integration
+`develop` where features accumulate, and isolated `feature` branches for
+review. Old branches (`feature/hito-2-infrastructure-temporal`) were
+superseded and should be deleted from remote.
+
+---
+
 ## Section 2 — Assumptions (ASM)
 
 Assumptions are things taken as true without full proof. Each carries a risk if
@@ -235,21 +296,28 @@ wrong and a trigger that would force a revisit.
 
 ## ASM-001 — Project-category brands
 
-**Status:** Assumed
+**Status:** Revised (2026) — superseded in part by ADR-012
 
-**Context:** The evaluation needs a fixed competitive category to measure Win
-Rate against. The technical test fixes a focus brand and its competitors.
+**Context:** The evaluation needs a competitive category to measure Win Rate
+against. The technical test fixes a focus brand and its competitors.
 
-**Assumption:** The focus brand is **Linear**; the category is project /
-issue-tracking tools, with competitors **Jira, Asana, ClickUp, Monday.com**
-(adjustable). Prompts are authored around this set and used in inverted pairs
-(e.g. "Linear vs Jira" and "Jira vs Linear").
+**Assumption (original):** The focus brand is **Linear**; the category is
+project / issue-tracking tools, with competitors **Jira, Asana, ClickUp,
+Monday.com** (adjustable). Prompts are authored around this set and used in
+inverted pairs (e.g. "Linear vs Jira" and "Jira vs Linear").
+
+**Revision:** Per ADR-012, the engine is now **fully generic** — no hardcoded
+brands. The focus brand is a dynamic input (`POST /api/evaluate`), not a
+hardcoded constant. The Linear/PM category is only the *default* value, not a
+code dependency. The qualitative risk that a brand set does not match how
+answer engines frame a space still applies per-evaluation, but no longer
+requires a code change to support a new brand/category.
 
 **Consequences:** The prompt corpus, competitor list and grounding fixtures are
-hard-coded to this category for the deliverable. Supporting a different brand or
-category means a new corpus, not a config toggle — until the corpus is made
-data-driven (roadmap). If the category definition is wrong (missing a real
-competitor, including a non-competitor), Share of Voice and Win Rate are skewed.
+generated dynamically per brand/category. Supporting a new brand/category needs
+no code change. If the category definition is wrong (missing a real competitor,
+including a non-competitor), Share of Voice and Win Rate are skewed — the risk
+moves from "hardcoded corpus" to "wrong user input".
 
 **Revisit trigger:** onboarding a second brand, or evidence that the category
 set does not match how answer engines actually frame the space.
