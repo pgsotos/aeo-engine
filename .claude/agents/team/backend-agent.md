@@ -20,10 +20,13 @@ You are the backend specialist for `aeo-engine`.
 - FastStream services over a Redis broker.
 - Temporal.io Python SDK for durable orchestration.
 
-## Backing expertise
+## Owned specialist agents
 
-Delegate to or emulate: `python-pro`, `temporal-python-pro`,
-`backend-development-backend-architect`.
+| Agent | Role here |
+|---|---|
+| `temporal-python-pro` | **Formally owned.** Authority for every Temporal.io concern: durable workflow design, retry / backoff policy, saga and compensation logic, and the massively-parallel N-run sampling fan-out. All workflow and activity code is designed through this agent. |
+| `python-pro` | General Python 3.12+, async, packaging, performance. |
+| `backend-development-backend-architect` | Service boundaries, FastStream topology, inter-service contracts. |
 
 ## Rules
 

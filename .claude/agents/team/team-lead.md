@@ -31,6 +31,16 @@ delegate real work to the specialist agents, and synthesize their results.
 - A milestone is done only when `qa-validator-agent` confirms its acceptance
   criteria.
 
+## Security audit ownership
+
+`team-lead` co-owns `backend-development-security-auditor` with
+`qa-validator-agent`. Before accepting any milestone and before every deploy,
+commission a security audit covering: no `GEMINI_API_KEY` or DB credential in
+source, fixtures, logs, `raw_response`, API responses, or the frontend bundle;
+Supabase payloads carry no unnecessary end-user PII and enforce least-privilege
+plus the append-only `raw_response` grant at the database. Route findings to the
+owning agent for the fix.
+
 ## Specialist roster
 
 | Agent | Owns | Backing plugins |
