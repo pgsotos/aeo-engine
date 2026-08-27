@@ -40,15 +40,16 @@ aeo-engine/
 | Service | Port | Purpose |
 |---|---|---|
 | `aeo-redis` | 6379 | FastStream broker + cache |
-| `aeo-postgres` | 5432 | OLTP: users, config, immutable `raw_response` |
+| `aeo-postgres` | 5432 | OLTP: users, config, immutable `raw_response` (`postgres:16-alpine`) |
 | `aeo-clickhouse` | 8123 / 9000 | OLAP: derived metrics |
 | `aeo-temporal` | 7233 | durable workflow engine |
 | `aeo-temporal-postgres` | — | Temporal's own persistence |
 | `aeo-temporal-ui` | 8080 | Temporal Web UI |
 
-> The full Supabase stack (Auth, Studio, PostgREST) is **not** in Compose. Use a
-> hosted Supabase project or the `supabase` CLI. Compose ships the Postgres
-> engine only (`supabase/postgres` image).
+> Local Postgres is plain `postgres:16-alpine` — no Supabase extensions. The
+> full Supabase stack (Auth, Studio, PostgREST, RLS) is a hosted project or the
+> `supabase` CLI, used in staging/production. Schema and migrations run on both.
+> See `DECISIONS.md` ADR-005.
 
 ### Run
 

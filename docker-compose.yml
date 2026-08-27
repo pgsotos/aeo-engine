@@ -2,14 +2,15 @@
 #
 # Services:
 #   aeo-redis            FastStream broker + cache (Pub/Sub, no durability)
-#   aeo-postgres         OLTP: users, config, immutable raw_response (Supabase Postgres image)
+#   aeo-postgres         OLTP: users, config, immutable raw_response (plain Postgres)
 #   aeo-clickhouse       OLAP: derived metrics, columnar analytics
 #   aeo-temporal         Durable workflow engine (parallel sampling, retries)
 #   aeo-temporal-postgres Temporal's own persistence (kept separate from app data)
 #   aeo-temporal-ui      Temporal Web UI
 #
-# Full Supabase (Auth, Studio, PostgREST) is NOT here — use a hosted project or
-# the `supabase` CLI. This file provides the Postgres engine only.
+# Local Postgres is a plain postgres:16-alpine — no Supabase extensions. The
+# full Supabase stack (Auth, Studio, PostgREST, RLS) is a hosted project or the
+# `supabase` CLI, used in staging/production. See DECISIONS.md ADR-005.
 
 name: aeo-engine
 
@@ -27,7 +28,7 @@ services:
       retries: 5
 
   aeo-postgres:
-    image: supabase/postgres:15.8.1.060
+    image: postgres:16-alpine
     container_name: aeo-postgres
     ports:
       - "5432:5432"
