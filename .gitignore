@@ -47,3 +47,7 @@ supabase/.env
 .atl/
 .playwright-cli/
 .playwright-mcp/
+.serena/
+
+# MCP server config (may carry API keys; use `claude mcp add -s local/user`)
+.mcp.json

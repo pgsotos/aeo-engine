@@ -1,0 +1,20 @@
+# gitleaks config for aeo-engine
+# Extends the default ruleset; adds project-specific allowlisting.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "aeo-engine allowlist"
+paths = [
+  # Template files carry placeholder values only (verified).
+  '''(^|/)\.env\.example$''',
+  # Next.js build cache holds ephemeral per-build keys; .next/ is git-ignored.
+  '''(^|/)\.next/''',
+  # Lockfiles.
+  '''(^|/)(bun\.lock|uv\.lock|package-lock\.json|bun\.lockb)$''',
+]
+regexes = [
+  # Placeholder values used across .env.example and docs.
+  '''your-(gemini-api-key|anon-key|project)''',
+  '''https://your-project\.supabase\.co''',
+]
