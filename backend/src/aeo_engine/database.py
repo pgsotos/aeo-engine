@@ -179,7 +179,7 @@ def save_grounding_sources(
     response_id: str,
     sources: list[GroundingSource],
     supports: list[GroundingSupport],
-) -> dict[str, list[dict]]:
+) -> dict[str, list[Row]]:
     """Persist grounding sources and link support segments to them.
 
     Sources are inserted first (DB assigns ids); supports are then inserted
@@ -189,8 +189,8 @@ def save_grounding_sources(
     offsets are preserved regardless. ``chunk_index`` is a linking aid only and
     is never persisted.
     """
-    inserted_sources: list[dict] = []
-    inserted_supports: list[dict] = []
+    inserted_sources: list[Row] = []
+    inserted_supports: list[Row] = []
 
     if sources:
         client = get_client()
@@ -202,7 +202,7 @@ def save_grounding_sources(
             }
             for s in sources
         ]
-        inserted_sources = client.table("grounding_sources").insert(rows).execute().data
+        inserted_sources = _rows(client.table("grounding_sources").insert(rows).execute().data)
 
         if supports:
             chunk_to_id = {
@@ -212,20 +212,24 @@ def save_grounding_sources(
             support_rows = [
                 {
                     "response_id": response_id,
-                    "source_id": chunk_to_id.get(support.source_chunk_index),
+                    "source_id": (
+                        chunk_to_id.get(support.source_chunk_index)
+                        if support.source_chunk_index is not None
+                        else None
+                    ),
                     "segment_start": support.segment_start,
                     "segment_end": support.segment_end,
                 }
                 for support in supports
             ]
-            inserted_supports = (
+            inserted_supports = _rows(
                 client.table("grounding_supports").insert(support_rows).execute().data
             )
 
     return {"sources": inserted_sources, "supports": inserted_supports}
 
 
-def get_grounding_sources(response_id: str) -> list[dict]:
+def get_grounding_sources(response_id: str) -> list[Row]:
     """Get all grounding sources for a response."""
     client = get_client()
     result = (
@@ -235,10 +239,10 @@ def get_grounding_sources(response_id: str) -> list[dict]:
         .order("created_at")
         .execute()
     )
-    return result.data
+    return _rows(result.data)
 
 
-def get_grounding_supports(response_id: str) -> list[dict]:
+def get_grounding_supports(response_id: str) -> list[Row]:
     """Get all grounding supports for a response."""
     client = get_client()
     result = (
@@ -248,7 +252,7 @@ def get_grounding_supports(response_id: str) -> list[dict]:
         .order("segment_start")
         .execute()
     )
-    return result.data
+    return _rows(result.data)
 
 
 # ── Classifications ─────────────────────────────────────────────────────────

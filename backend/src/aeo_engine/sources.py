@@ -18,6 +18,7 @@ Empirical notes driving this module (from grounding exploration):
 from __future__ import annotations
 
 import re
+from typing import Any
 
 from aeo_engine.models import (
     Classification,
@@ -48,7 +49,7 @@ def extract_domain(web_title: str) -> str:
     return match.group(1).lower() if match else ""
 
 
-def extract_sources(grounding_metadata: dict | None) -> list[GroundingSource]:
+def extract_sources(grounding_metadata: dict[str, Any] | None) -> list[GroundingSource]:
     """Extract one :class:`GroundingSource` per grounding chunk with a web title.
 
     Chunks without a ``web.title`` cannot be attributed and are skipped.
@@ -73,7 +74,7 @@ def extract_sources(grounding_metadata: dict | None) -> list[GroundingSource]:
     return sources
 
 
-def extract_supports(grounding_metadata: dict | None) -> list[GroundingSupport]:
+def extract_supports(grounding_metadata: dict[str, Any] | None) -> list[GroundingSupport]:
     """Extract one :class:`GroundingSupport` per grounding support segment.
 
     A support may cite several chunks (``grounding_chunk_indices``); it links to

@@ -6,15 +6,13 @@ import asyncio
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import TypeVar
+from typing import Any
 
 from google import genai
 from google.genai import types
 
 from aeo_engine.config import settings
 from aeo_engine.models import Competitor, GeminiResponse
-
-T = TypeVar("T")
 
 DEFAULT_MODEL = "gemini-3.6-flash"
 _MAX_RETRIES = 3
@@ -109,7 +107,7 @@ def _is_transient(exc: Exception) -> bool:
     return "429" in text or "RESOURCE_EXHAUSTED" in text or " 5" in text[:8]
 
 
-async def _call_in_thread_with_retry(fn: Callable[[], T]) -> T:
+async def _call_in_thread_with_retry[T](fn: Callable[[], T]) -> T:
     """Run a blocking Gemini call in a thread, retrying transient failures.
 
     Rate limits and brief 5xx blips are common under parallel load; a few
@@ -142,7 +140,7 @@ async def call_gemini(
     Runs in a thread to avoid blocking the event loop.
     """
 
-    def _sync_call() -> tuple[str, dict | None]:
+    def _sync_call() -> tuple[str, dict[str, Any] | None]:
         client = _get_client()
         chat = client.chats.create(
             model=model,

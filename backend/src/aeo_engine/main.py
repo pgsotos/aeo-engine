@@ -331,9 +331,7 @@ async def run_evaluation(
             status="running",
         )
     )
-    background_tasks.add_task(
-        _execute_evaluation, evaluation_id, corpus, all_brands, n
-    )
+    background_tasks.add_task(_execute_evaluation, evaluation_id, corpus, all_brands, n)
 
     return EvaluationAccepted(
         evaluation_id=evaluation_id,
@@ -406,17 +404,12 @@ async def _execute_evaluation(
     try:
         semaphore = asyncio.Semaphore(EVAL_CONCURRENCY)
         per_prompt = await asyncio.gather(
-            *(
-                _sample_and_store_prompt(p, evaluation_id, all_brands, n, semaphore)
-                for p in corpus
-            ),
+            *(_sample_and_store_prompt(p, evaluation_id, all_brands, n, semaphore) for p in corpus),
             return_exceptions=True,
         )
 
         all_classifications = []
-        classifications_by_type: dict[PromptType, list[ClassificationResult]] = defaultdict(
-        list
-    )
+        classifications_by_type: dict[PromptType, list[ClassificationResult]] = defaultdict(list)
         failures = 0
         for prompt, results in zip(corpus, per_prompt, strict=True):
             if isinstance(results, BaseException):
@@ -435,9 +428,7 @@ async def _execute_evaluation(
         if not all_classifications:
             # Surface why, not just that it failed — the usual cause is a bad
             # GEMINI_API_KEY, and the first prompt's error says so exactly.
-            first_error = next(
-                (r for r in per_prompt if isinstance(r, BaseException)), None
-            )
+            first_error = next((r for r in per_prompt if isinstance(r, BaseException)), None)
             raise RuntimeError(
                 f"every prompt failed; first error: {first_error!r}"
                 if first_error
@@ -445,9 +436,7 @@ async def _execute_evaluation(
             )
 
         save_classifications(all_classifications)
-        metrics = compute_per_type_metrics(
-            classifications_by_type, evaluation_id, all_brands
-        )
+        metrics = compute_per_type_metrics(classifications_by_type, evaluation_id, all_brands)
         save_metrics(metrics)
 
         # Brand-level consistency over the focus brand's per-type DWR
@@ -494,10 +483,7 @@ async def get_prompts(
         category=category,
         competitors=competitor_list,
         prompts={
-            pt.value: [
-                CorpusPrompt(id=p.id, text=p.text, inverted=p.inverted)
-                for p in prompts
-            ]
+            pt.value: [CorpusPrompt(id=p.id, text=p.text, inverted=p.inverted) for p in prompts]
             for pt, prompts in by_type.items()
         },
     )

@@ -70,8 +70,7 @@ def _linear_metrics() -> list[MetricSummary]:
         PromptType.NEGATIVE,
     ]
     metrics = [
-        _metric(pt, FOCUS_BRAND, rate)
-        for pt, rate in zip(types, PER_TYPE_RATES, strict=True)
+        _metric(pt, FOCUS_BRAND, rate) for pt, rate in zip(types, PER_TYPE_RATES, strict=True)
     ]
     # Competitor must NOT leak into the focus brand's consistency window.
     metrics.append(_metric(PromptType.DIRECT, "Jira", 0.99))
@@ -131,15 +130,10 @@ async def test_execute_evaluation_persists_consistency_for_focus_brand() -> None
 
         expected = 1 - statistics.pstdev(PER_TYPE_RATES)
         update_args = [call.args for call in mock_update.call_args_list]
-        assert {
-            "consistency": pytest.approx(expected)
-        } in [args[1] for args in update_args]
+        assert {"consistency": pytest.approx(expected)} in [args[1] for args in update_args]
 
         # The completion update still happens and carries status.
-        assert any(
-            args[1].get("status") == "completed"
-            for args in update_args
-        )
+        assert any(args[1].get("status") == "completed" for args in update_args)
 
 
 @pytest.mark.asyncio
@@ -157,9 +151,7 @@ async def test_execute_evaluation_skips_consistency_when_single_type() -> None:
         patch("aeo_engine.main.compute_per_type_metrics") as mock_metrics,
     ):
         mock_sample.return_value = []
-        mock_metrics.return_value = [
-            _metric(PromptType.DIRECT, FOCUS_BRAND, 0.6)
-        ]
+        mock_metrics.return_value = [_metric(PromptType.DIRECT, FOCUS_BRAND, 0.6)]
 
         await _execute_evaluation(
             evaluation_id="eval-1",
@@ -247,9 +239,7 @@ async def test_sample_and_store_persists_grounding_sources() -> None:
     with (
         patch("aeo_engine.main.save_responses"),
         patch("aeo_engine.main.save_grounding_sources") as mock_grounding,
-        patch(
-            "aeo_engine.main.run_parallel_sampling", new_callable=AsyncMock
-        ) as mock_sampling,
+        patch("aeo_engine.main.run_parallel_sampling", new_callable=AsyncMock) as mock_sampling,
         patch("aeo_engine.main.classify_all_brands") as mock_classify,
     ):
         mock_sampling.return_value = [grounded, plain]
@@ -274,7 +264,8 @@ async def test_sample_and_store_persists_grounding_sources() -> None:
         assert [s.domain for s in sources] == ["linear.app", "g2.com"]
         assert [s.chunk_index for s in sources] == [0, 1]
         assert all(s.response_id == "resp-1" for s in sources)
-        assert [
-            (sp.segment_start, sp.segment_end, sp.source_chunk_index) for sp in supports
-        ] == [(0, 52, 0), (60, 120, 1)]
+        assert [(sp.segment_start, sp.segment_end, sp.source_chunk_index) for sp in supports] == [
+            (0, 52, 0),
+            (60, 120, 1),
+        ]
         assert all(sp.response_id == "resp-1" for sp in supports)
