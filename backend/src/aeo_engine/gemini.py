@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 
 from google import genai
@@ -13,11 +14,31 @@ from aeo_engine.config import settings
 from aeo_engine.models import Competitor, GeminiResponse
 
 DEFAULT_MODEL = "gemini-3.6-flash"
+_MAX_RETRIES = 3
+_RETRY_BASE_DELAY = 1.0  # seconds; grows 3x per attempt
 
 
 def _get_client() -> genai.Client:
     """Create a Gemini client from settings."""
     return genai.Client(api_key=settings.gemini_api_key)
+
+
+async def _call_in_thread_with_retry(fn: Callable[[], str]) -> str:
+    """Run a blocking Gemini call in a thread, retrying transient failures.
+
+    Rate limits (429) and brief 5xx blips are common under parallel load; a few
+    backed-off retries absorb them without failing the whole evaluation.
+    """
+    delay = _RETRY_BASE_DELAY
+    for attempt in range(_MAX_RETRIES):
+        try:
+            return await asyncio.to_thread(fn)
+        except Exception:
+            if attempt == _MAX_RETRIES - 1:
+                raise
+            await asyncio.sleep(delay)
+            delay *= 3
+    raise RuntimeError("unreachable")  # pragma: no cover
 
 
 async def call_gemini(
@@ -45,7 +66,7 @@ async def call_gemini(
         response = chat.send_message(prompt)
         return response.text or ""
 
-    raw_text = await asyncio.to_thread(_sync_call)
+    raw_text = await _call_in_thread_with_retry(_sync_call)
 
     return GeminiResponse(
         id=str(uuid.uuid4()),
@@ -147,15 +168,18 @@ async def run_parallel_sampling(
     n: int = 8,
     model: str = DEFAULT_MODEL,
     concurrency: int = 4,
+    semaphore: asyncio.Semaphore | None = None,
 ) -> list[GeminiResponse]:
     """Run N independent calls to Gemini with bounded concurrency.
 
-    Uses asyncio.Semaphore to avoid hammering the API rate limit.
+    Pass a shared ``semaphore`` to cap concurrency across a whole evaluation
+    (many prompts sampled at once); otherwise a local one of size
+    ``concurrency`` is used.
     """
-    semaphore = asyncio.Semaphore(concurrency)
+    sem = semaphore or asyncio.Semaphore(concurrency)
 
     async def _bounded_call(run_idx: int) -> GeminiResponse:
-        async with semaphore:
+        async with sem:
             return await call_gemini(prompt, evaluation_id, prompt_id, run_idx + 1, model)
 
     tasks = [_bounded_call(i) for i in range(n)]
