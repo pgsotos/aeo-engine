@@ -17,9 +17,7 @@ from aeo_engine.models import (
 )
 
 
-def wilson_score_interval(
-    successes: int, trials: int, z: float = 1.96
-) -> tuple[float, float]:
+def wilson_score_interval(successes: int, trials: int, z: float = 1.96) -> tuple[float, float]:
     """Compute the Wilson score confidence interval for a binomial proportion.
 
     Args:
@@ -84,13 +82,9 @@ def compute_metrics(
         1 for c in classifications if c.classification == Classification.DIRECT_WINNER
     )
     alternatives = sum(
-        1
-        for c in classifications
-        if c.classification == Classification.ALTERNATIVE_MENTION
+        1 for c in classifications if c.classification == Classification.ALTERNATIVE_MENTION
     )
-    omitted = sum(
-        1 for c in classifications if c.classification == Classification.OMITTED
-    )
+    omitted = sum(1 for c in classifications if c.classification == Classification.OMITTED)
 
     win_rate = direct_wins / total if total > 0 else 0.0
     ci_lower, ci_upper = wilson_score_interval(direct_wins, total)
@@ -135,9 +129,7 @@ def compute_all_metrics(
         # This is handled by the caller grouping before passing here
 
         # For now, compute overall metrics
-        overall = compute_metrics(
-            brand_classifications, PromptType.DIRECT, evaluation_id, brand
-        )
+        overall = compute_metrics(brand_classifications, PromptType.DIRECT, evaluation_id, brand)
         metrics.append(overall)
 
     return metrics

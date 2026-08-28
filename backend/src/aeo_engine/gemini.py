@@ -6,6 +6,7 @@ import asyncio
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import Any
 
 from google import genai
 from google.genai import types
@@ -106,12 +107,13 @@ def _is_transient(exc: Exception) -> bool:
     return "429" in text or "RESOURCE_EXHAUSTED" in text or " 5" in text[:8]
 
 
-async def _call_in_thread_with_retry(fn: Callable[[], str]) -> str:
+async def _call_in_thread_with_retry[T](fn: Callable[[], T]) -> T:
     """Run a blocking Gemini call in a thread, retrying transient failures.
 
     Rate limits and brief 5xx blips are common under parallel load; a few
     backed-off retries absorb them without failing the whole evaluation.
-    Anything else is raised immediately.
+    Anything else is raised immediately. The call's return value (which may
+    carry extra metadata, e.g. grounding) is returned unchanged.
     """
     delay = _RETRY_BASE_DELAY
     for attempt in range(_MAX_RETRIES):
@@ -138,19 +140,30 @@ async def call_gemini(
     Runs in a thread to avoid blocking the event loop.
     """
 
-    def _sync_call() -> str:
+    def _sync_call() -> tuple[str, dict[str, Any] | None]:
         client = _get_client()
         chat = client.chats.create(
             model=model,
             config=types.GenerateContentConfig(
                 temperature=0.7,
                 max_output_tokens=1024,
+                # Request Google Search grounding so answers can cite sources.
+                # Presence of grounding_metadata is stochastic (~20-30% of calls).
+                tools=[types.Tool(google_search=types.GoogleSearch())],
             ),
         )
         response = chat.send_message(prompt)
-        return response.text or ""
+        raw_text = response.text or ""
+        candidates = response.candidates or []
+        grounding = (
+            candidates[0].grounding_metadata
+            if candidates and candidates[0].grounding_metadata
+            else None
+        )
+        grounding_metadata = grounding.model_dump(mode="json") if grounding else None
+        return raw_text, grounding_metadata
 
-    raw_text = await _call_in_thread_with_retry(_sync_call)
+    raw_text, grounding_metadata = await _call_in_thread_with_retry(_sync_call)
 
     return GeminiResponse(
         id=str(uuid.uuid4()),
@@ -159,6 +172,7 @@ async def call_gemini(
         run_index=run_index,
         model_id=model,
         raw_text=raw_text,
+        grounding_metadata=grounding_metadata,
         created_at=datetime.now(UTC),
     )
 

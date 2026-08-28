@@ -52,11 +52,19 @@ export interface Competitor {
   reason: string;
 }
 
+export interface SourceImpactRow {
+  domain: string;
+  citations: number;
+  direct_wins: number;
+  impact_ratio: number;
+}
+
 export interface DashboardData {
   evaluation: Evaluation;
   metrics: MetricSummary[];
   responses: GeminiResponse[];
   classifications: ClassificationResult[];
+  source_impact?: SourceImpactRow[];
 }
 
 export interface EvaluateRequest {

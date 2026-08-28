@@ -138,8 +138,6 @@ def classify_response(raw_text: str, brand: str) -> ClassificationResult:
     )
 
 
-def classify_all_brands(
-    raw_text: str, brands: list[str]
-) -> list[ClassificationResult]:
+def classify_all_brands(raw_text: str, brands: list[str]) -> list[ClassificationResult]:
     """Classify a single response against all brands."""
     return [classify_response(raw_text, brand) for brand in brands]

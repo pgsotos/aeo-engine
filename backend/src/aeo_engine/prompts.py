@@ -17,6 +17,8 @@ import random
 
 from aeo_engine.models import PromptRecord, PromptType
 
+CITATION_SUFFIX = " If you consult sources, cite them with titles and source domains."
+
 
 def _id(prefix: str, index: int, inverted: bool = False) -> str:
     suffix = "-inv" if inverted else ""
@@ -31,7 +33,10 @@ def generate_corpus(
     """Generate the full prompt corpus for any brand + category + competitors.
 
     Each prompt type has 2 base prompts × 2 orderings = 4 prompts per type.
-    Total: 5 types × 4 = 20 prompts.
+    Total: 5 types × 4 = 20 prompts. Every prompt is suffixed with the same
+    citation instruction so Gemini grounding cites sources with titles and
+    domains — appended identically to base and inverted prompts to preserve
+    competitive symmetry.
     """
     all_brands = [brand] + competitors
     corpus: list[PromptRecord] = []
@@ -71,10 +76,7 @@ def generate_corpus(
     # ── Comparative prompts ─────────────────────────────────────────────
 
     comparative_templates = [
-        (
-            "{brand} vs {competitor}: which one is better "
-            "for a growing team and why?"
-        ),
+        ("{brand} vs {competitor}: which one is better for a growing team and why?"),
         (
             "I'm choosing between {brand} and {competitor} for {category}. "
             "Which should I pick and what are the key differences?"
@@ -87,18 +89,14 @@ def generate_corpus(
             PromptRecord(
                 id=_id("comp", i),
                 prompt_type=PromptType.COMPARATIVE,
-                text=template.format(
-                    brand=brand, competitor=competitor, category=category
-                ),
+                text=template.format(brand=brand, competitor=competitor, category=category),
             )
         )
         corpus.append(
             PromptRecord(
                 id=_id("comp", i, inverted=True),
                 prompt_type=PromptType.COMPARATIVE,
-                text=template.format(
-                    brand=competitor, competitor=brand, category=category
-                ),
+                text=template.format(brand=competitor, competitor=brand, category=category),
                 inverted=True,
             )
         )
@@ -211,14 +209,15 @@ def generate_corpus(
             )
         )
 
-    return corpus
+    # ── Citation instruction ────────────────────────────────────────────
+    # Single suffix for ALL prompts (including inverted pairs) so grounding
+    # captures citable sources and pair symmetry is preserved.
+
+    return [p.model_copy(update={"text": f"{p.text}{CITATION_SUFFIX}"}) for p in corpus]
 
 
 def get_corpus_by_type(
     corpus: list[PromptRecord],
 ) -> dict[PromptType, list[PromptRecord]]:
     """Group prompts by type."""
-    return {
-        pt: [p for p in corpus if p.prompt_type == pt]
-        for pt in PromptType
-    }
+    return {pt: [p for p in corpus if p.prompt_type == pt] for pt in PromptType}

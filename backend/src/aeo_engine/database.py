@@ -12,6 +12,8 @@ from aeo_engine.models import (
     ClassificationResult,
     Evaluation,
     GeminiResponse,
+    GroundingSource,
+    GroundingSupport,
     MetricSummary,
 )
 
@@ -165,6 +167,114 @@ def get_responses(evaluation_id: str) -> list[Row]:
         .select("*")
         .eq("evaluation_id", evaluation_id)
         .order("prompt_id,run_index")
+        .execute()
+    )
+    return _rows(result.data)
+
+
+# ── Grounding ────────────────────────────────────────────────────────────────
+
+
+def save_grounding_sources(
+    response_id: str,
+    sources: list[GroundingSource],
+    supports: list[GroundingSupport],
+) -> dict[str, list[Row]]:
+    """Persist grounding sources and link support segments to them.
+
+    Sources are inserted first (DB assigns ids); supports are then inserted
+    with ``source_id`` resolved by matching ``source_chunk_index`` to the
+    inserted source rows. A support whose chunk produced no source row (e.g.
+    the chunk had no web title) persists with ``source_id=None`` — the segment
+    offsets are preserved regardless. ``chunk_index`` is a linking aid only and
+    is never persisted.
+    """
+    inserted_sources: list[Row] = []
+    inserted_supports: list[Row] = []
+
+    if sources:
+        client = get_client()
+        rows = [
+            {
+                "response_id": response_id,
+                "web_title": s.web_title,
+                "domain": s.domain,
+            }
+            for s in sources
+        ]
+        inserted_sources = _rows(client.table("grounding_sources").insert(rows).execute().data)
+
+        if supports:
+            chunk_to_id = {
+                source.chunk_index: row["id"]
+                for source, row in zip(sources, inserted_sources, strict=True)
+            }
+            support_rows = [
+                {
+                    "response_id": response_id,
+                    "source_id": (
+                        chunk_to_id.get(support.source_chunk_index)
+                        if support.source_chunk_index is not None
+                        else None
+                    ),
+                    "segment_start": support.segment_start,
+                    "segment_end": support.segment_end,
+                }
+                for support in supports
+            ]
+            inserted_supports = _rows(
+                client.table("grounding_supports").insert(support_rows).execute().data
+            )
+
+    return {"sources": inserted_sources, "supports": inserted_supports}
+
+
+def get_grounding_sources(response_id: str) -> list[Row]:
+    """Get all grounding sources for a response."""
+    client = get_client()
+    result = (
+        client.table("grounding_sources")
+        .select("*")
+        .eq("response_id", response_id)
+        .order("created_at")
+        .execute()
+    )
+    return _rows(result.data)
+
+
+def get_grounding_supports(response_id: str) -> list[Row]:
+    """Get all grounding supports for a response."""
+    client = get_client()
+    result = (
+        client.table("grounding_supports")
+        .select("*")
+        .eq("response_id", response_id)
+        .order("segment_start")
+        .execute()
+    )
+    return _rows(result.data)
+
+
+def get_grounding_sources_for_evaluation(evaluation_id: str) -> list[Row]:
+    """Get all grounding sources for an evaluation.
+
+    Grounding sources don't have evaluation_id directly — join through
+    gemini_responses to filter by evaluation_id (mirrors get_classifications).
+    """
+    client = get_client()
+
+    resp_result = (
+        client.table("gemini_responses").select("id").eq("evaluation_id", evaluation_id).execute()
+    )
+    response_ids = [r["id"] for r in _rows(resp_result.data)]
+    if not response_ids:
+        return []
+
+    result = (
+        client.table("grounding_sources")
+        .select("*")
+        .in_("response_id", response_ids)
+        .order("created_at")
         .execute()
     )
     return _rows(result.data)
