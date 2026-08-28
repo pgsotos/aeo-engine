@@ -1,5 +1,8 @@
 # DECISIONS.md — Decision & Scope Log
 
+*[Resumen en español](DECISIONES.md)*
+
+
 This document is the comprehensive record of how `aeo-engine` was shaped. It is
 **not** limited to technology choices or Architecture Decision Records. Updating
 it is mandatory whenever any of the following changes:
