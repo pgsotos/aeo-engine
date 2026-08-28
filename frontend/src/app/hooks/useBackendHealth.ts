@@ -8,6 +8,7 @@ const FAILURE_THRESHOLD = 2; // consecutive failures before showing "not availab
 export interface BackendHealth {
   connected: boolean;
   geminiConfigured: boolean;
+  supabaseConfigured: boolean;
   checking: boolean;
 }
 
@@ -17,6 +18,7 @@ export function useBackendHealth(): BackendHealth {
   // to a bare /health path.
   const [connected, setConnected] = useState(true);
   const [geminiConfigured, setGeminiConfigured] = useState(false);
+  const [supabaseConfigured, setSupabaseConfigured] = useState(false);
   const [checking, setChecking] = useState(true);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const failuresRef = useRef(0);
@@ -37,11 +39,13 @@ export function useBackendHealth(): BackendHealth {
       failuresRef.current = 0;
       setConnected(true);
       setGeminiConfigured(data.gemini_configured ?? false);
+      setSupabaseConfigured(data.supabase_configured ?? false);
     } catch {
       failuresRef.current += 1;
       if (failuresRef.current >= FAILURE_THRESHOLD) {
         setConnected(false);
         setGeminiConfigured(false);
+        setSupabaseConfigured(false);
       }
     } finally {
       setChecking(false);
@@ -63,5 +67,5 @@ export function useBackendHealth(): BackendHealth {
     };
   }, [check]);
 
-  return { connected, geminiConfigured, checking };
+  return { connected, geminiConfigured, supabaseConfigured, checking };
 }
