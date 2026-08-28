@@ -2,8 +2,9 @@
 
 Resumen de por qué el proyecto quedó como quedó. El registro completo, con el
 contexto y las consecuencias de cada entrada, está en
-**[DECISIONS.md](DECISIONS.md)** (en inglés): 20 ADRs, 2 supuestos y 4
-exclusiones. Este documento es el mapa; aquel es el territorio.
+**[DECISIONS.md](DECISIONS.md)** (en inglés): 24 ADRs, 2 supuestos y 4
+exclusiones, ordenados en tres bloques — método y medición, arquitectura, y
+proceso con agentes. Este documento es el mapa; aquel es el territorio.
 
 ## El encargo
 
@@ -25,8 +26,46 @@ pregunta a Gemini por herramientas de gestión de proyectos.
 ### Qué se mide, y por qué el número es confiable
 
 **AEO, no GEO** (ADR-002). No se mide presencia web amplia sino si la marca es
-*la recomendación* que el motor genera. Cada respuesta se clasifica por marca en
-`direct_winner`, `alternative_mention` u `omitted`.
+*la recomendación* que el motor genera. Cada respuesta de Gemini se clasifica,
+por marca, en exactamente un grupo:
+
+| Grupo | Significado |
+|---|---|
+| `direct_winner` | La marca es la solución o recomendación N.º 1 generada para el usuario. |
+| `alternative_mention` | La marca aparece solo como opción secundaria, o como parte de una lista. |
+| `omitted` | La marca está ausente — la competencia se queda con la respuesta directa. |
+
+**Clasificación determinista, no un juez LLM** (ADR-022). La forma habitual de
+resolver esto es devolverle la respuesta a un modelo y preguntarle "¿esta marca
+es la recomendación principal?". Acá no: la clasificación son **funciones puras
+sobre el texto crudo**. Ausente → `omitted`. Presente, y mencionada en el primer
+25 % de la respuesta o junto a lenguaje de recomendación → `direct_winner`,
+salvo que una palabra de contraste (`however`, `although`, `instead`) lo vete.
+El resto → `alternative_mention`.
+
+El motivo es medible: un juez LLM también es probabilístico, y medir un sistema
+probabilístico con una regla probabilística vuelve el intervalo de confianza
+inútil — deja de poder separarse la varianza del modelo de la del juez. Además
+se puede auditar: cada clasificación se remonta a una regla y a una posición de
+carácter concreta.
+
+El ADR-022 también dice dónde falla, porque es una heurística y no un parser: el
+umbral del 25 % es una elección y no una constante derivada; las listas de
+palabras son solo en inglés; y el veto por contraste es posicional, no
+sintáctico — no distingue "Linear es mejor, aunque Jira sea más barato" de
+"Jira es mejor, aunque Linear sea más rápido". Lo mitiga la estructura, no la
+astucia: con N muestras, un error individual mueve el Win Rate 1/32 ≈ 3 puntos,
+dentro del intervalo que se reporta.
+
+**Cómo se le habla a Gemini** (ADR-023). La temperatura cambia según el
+propósito: **0,7 para muestrear** —la varianza *es* la señal; a temperatura 0
+las N corridas colapsarían en la misma respuesta y el intervalo sería
+decorativo— y **0,3 para resolver** categorías y competidores, que deben ser
+estables o dos evaluaciones de la misma marca dejan de ser comparables. Cada
+llamada abre un chat nuevo, sin historial, para que las muestras sean
+independientes. El límite de 1024 tokens tiene un costo registrado: una
+respuesta larga se corta, y una marca nombrada en la cola truncada cuenta como
+`omitted`.
 
 **Un solo llamado no es una medición** (ADR-006). Los modelos son
 probabilísticos, así que cada prompt se ejecuta N veces de forma independiente
@@ -49,9 +88,21 @@ Esto resultó ser el hallazgo del proyecto: en las diecinueve evaluaciones, las
 marcas son fuertes en `comparativo` y `negativo` y débiles en `característica`
 (Notion 3 %, Canva 9 %, Zoom 6 %). Una métrica única lo habría ocultado.
 
-**Simetría competitiva** (ADR-010). Cada prompt se emite en los dos órdenes de
-marcas. Si "Linear vs Jira" y "Jira vs Linear" dan resultados distintos, eso es
-sesgo de posición, no preferencia — y los pares invertidos lo cancelan.
+**El corpus, en concreto** (ADR-024). 5 tipos × 2 preguntas base × 2 órdenes de
+marcas = **20 prompts**. Con N = 8 son 160 llamadas a Gemini por evaluación y
+**32 corridas por tipo de prompt por marca** — el número que informa cada celda
+del heatmap.
+
+**Simetría competitiva** (ADR-024). Cada prompt se emite en los dos órdenes de
+marcas. Los modelos de lenguaje son sensibles al orden: una marca listada
+primero tiene más chance de ser nombrada primero. Sin la mitad invertida, la
+métrica estaría midiendo en parte el prompt y no el modelo. Las dos mitades
+suman a la misma celda, así que el sesgo de posición se cancela en vez de
+acumularse.
+
+Dos preguntas base por tipo, no una: una sola redacción mide esa redacción. Dos
+formas distintas de la misma intención separan "el modelo prefiere esta marca"
+de "el modelo reacciona a esta frase".
 
 **Inmutabilidad** (ADR-005). El texto crudo de Gemini se guarda literal y nunca
 se modifica; las métricas son funciones puras sobre él. Cualquier número del
