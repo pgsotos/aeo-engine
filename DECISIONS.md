@@ -71,6 +71,7 @@ Linear is the brief's configuration, not a constant in the code.
 | [ADR-011](#adr-011--gemini-36-flash-as-the-measured-engine) | `gemini-3.6-flash` as the measured engine |
 | [ADR-012](#adr-012--generic-aeo-engine-no-hardcoded-brands) | Generic engine — no hardcoded brands |
 | [ADR-025](#adr-025--category-cleaning-heuristic-and-scoped-frontend-test-harness) | Resolver cleaning heuristic, 404 on empty, scoped vitest harness |
+| [ADR-026](#adr-026--gemini-36-flash-grounding-is-unreliable-with-google-search-via-chat) | `gemini-3.6-flash` grounding is unreliable — 0/480 responses had sources |
 
 ### B · Architecture — the stack, and the one abandoned
 
@@ -1045,6 +1046,46 @@ fires only on a subset of calls, and the attribution signal is the chunk's
 **Revisit trigger:** observed grounding rate below ~10% over many evaluations,
 title formats that materially defeat the heuristic, or segment offsets that
 misalign with stored `raw_text`.
+
+> **Review note (ADR-026, 2026-08-28):** the ASM-003 expectation of "~20–30%
+> of calls carrying grounding chunks" was not reproduced on `gemini-3.6-flash`.
+> See [ADR-026](#adr-026--gemini-36-flash-grounding-is-unreliable-with-google-search-via-chat)
+> for the empirical evidence and its consequence for the Source Auditor.
+
+---
+
+## ADR-026 — `gemini-3.6-flash` grounding is unreliable with `google_search` via chat
+
+**Status:** Accepted (documented)
+
+**Context / Decision:** the Source Auditor (ADR-015) and the grounding assumptions
+in ASM-003 rely on the `google_search` grounding tool returning citation chunks
+for a meaningful share of responses. This ADR records the empirical result that,
+against **`gemini-3.6-flash`** served through the `google-genai` chat interface,
+that expectation does not hold: the model returns no usable grounding chunks.
+
+**Observed evidence (2026-08-28):**
+- Three real evaluations on `develop` (Linear, Notion, Airtable; N=8) produced
+  480 persisted responses; **0 / 480** carried a non-null `grounding_metadata`.
+- Direct one-off calls returned `grounding_metadata` that was sometimes `null`
+  and sometimes truthy but with `groundingChunks = 0` — never usable citations.
+- The pipeline configuration is correct: `tools=[google_search]` is attached to
+  the request and `grounding_metadata` is persisted verbatim. This is a model /
+  provider limitation, not a pipeline or persistence bug.
+
+**Consequences:**
+- Source impact (Source Auditor) computes over the grounded subset; with no
+  grounding chunks there is **nothing to attribute**, so source-level impact is
+  effectively zero for `gemini-3.6-flash` today.
+- ADR-015 / ASM-003 remain valid as designed; their ~20–30% expectation does not
+  hold for flash and must not be assumed.
+- The Source Auditor feature ships but has no actionable data until a model /
+  serving mode with reliable grounding is used (candidate: a `Pro` tier or a
+  different API mode that returns grounding chunks).
+
+**Revisit trigger:** re-run the same validation after switching to a model or
+serving configuration that returns `groundingChunks > 0`; then re-baseline the
+grounding-rate expectation for that configuration.
 
 ---
 
