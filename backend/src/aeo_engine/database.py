@@ -17,6 +17,32 @@ from aeo_engine.models import (
 
 _client: Client | None = None
 
+Row = dict[str, Any]
+"""One database row.
+
+The Supabase client types `.execute().data` as an open JSON union, because a
+REST payload could be anything. Every table in this project returns object
+rows, so the three helpers below narrow that union once, at the boundary,
+instead of scattering casts through the module. The cast is an assertion about
+the schema, not a proof: if a query is changed to return a scalar, mypy will
+not catch it — the schema in `migrations/` is the contract.
+"""
+
+
+def _rows(data: Any) -> list[Row]:
+    """Narrow a multi-row `.data` payload."""
+    return cast("list[Row]", data)
+
+
+def _first_row(data: Any) -> Row:
+    """Narrow the single-element list an insert or update returns."""
+    return _rows(data)[0]
+
+
+def _row_or_none(data: Any) -> Row | None:
+    """Narrow a `.single()` payload, which is null when nothing matched."""
+    return cast("Row | None", data)
+
 
 _SETUP_HINT = """
 Supabase is not configured. Set these in backend/.env (see .env.example):
@@ -55,43 +81,36 @@ def get_client() -> Client:
 # ── Evaluations ─────────────────────────────────────────────────────────────
 
 
-def create_evaluation(evaluation: Evaluation) -> dict:
+def create_evaluation(evaluation: Evaluation) -> Row:
     """Insert a new evaluation record."""
     client = get_client()
-    result = (
-        client.table("evaluations")
-        .insert(evaluation.model_dump(mode="json"))
-        .execute()
-    )
-    return result.data[0]
+    result = client.table("evaluations").insert(evaluation.model_dump(mode="json")).execute()
+    return _first_row(result.data)
 
 
-def get_evaluation(evaluation_id: str) -> dict | None:
-    """Get an evaluation by ID."""
+def get_evaluation(evaluation_id: str) -> Row | None:
+    """Get an evaluation by ID, or None when no row matches.
+
+    Uses `maybe_single()`, not `single()`: `single()` raises PGRST116 ("cannot
+    coerce the result to a single JSON object") on an empty result, which made
+    the `None` branch in the caller unreachable and turned an unknown ID into a
+    500 instead of a 404.
+    """
     client = get_client()
     result = (
-        client.table("evaluations")
-        .select("*")
-        .eq("id", evaluation_id)
-        .single()
-        .execute()
+        client.table("evaluations").select("*").eq("id", evaluation_id).maybe_single().execute()
     )
-    return result.data
+    return _row_or_none(result.data if result else None)
 
 
-def update_evaluation(evaluation_id: str, updates: dict) -> dict:
+def update_evaluation(evaluation_id: str, updates: Row) -> Row:
     """Update an evaluation record."""
     client = get_client()
-    result = (
-        client.table("evaluations")
-        .update(updates)
-        .eq("id", evaluation_id)
-        .execute()
-    )
-    return result.data[0]
+    result = client.table("evaluations").update(updates).eq("id", evaluation_id).execute()
+    return _first_row(result.data)
 
 
-def list_evaluations() -> list[dict]:
+def list_evaluations() -> list[Row]:
     """List all evaluations, most recent first, each with the brands it scored.
 
     The competitor set is not a column on `evaluations` — it is recovered from
@@ -100,27 +119,18 @@ def list_evaluations() -> list[dict]:
     still running has no metrics yet and gets an empty list.
     """
     client = get_client()
-    # The Supabase client types `.data` as untyped JSON; these are row dicts.
-    evaluations = cast(
-        "list[dict[str, Any]]",
-        (
-            client.table("evaluations")
-            .select("*")
-            .order("created_at", desc=True)
-            .execute()
-        ).data,
+    evaluations = _rows(
+        client.table("evaluations").select("*").order("created_at", desc=True).execute().data
     )
     if not evaluations:
         return []
 
-    metric_rows = cast(
-        "list[dict[str, Any]]",
-        (
-            client.table("metrics")
-            .select("evaluation_id,brand")
-            .in_("evaluation_id", [e["id"] for e in evaluations])
-            .execute()
-        ).data,
+    metric_rows = _rows(
+        client.table("metrics")
+        .select("evaluation_id,brand")
+        .in_("evaluation_id", [e["id"] for e in evaluations])
+        .execute()
+        .data
     )
 
     brands_by_evaluation: dict[str, set[str]] = defaultdict(set)
@@ -137,17 +147,17 @@ def list_evaluations() -> list[dict]:
 # ── Gemini Responses ────────────────────────────────────────────────────────
 
 
-def save_responses(responses: list[GeminiResponse]) -> list[dict]:
+def save_responses(responses: list[GeminiResponse]) -> list[Row]:
     """Batch insert Gemini responses (raw, immutable)."""
     if not responses:
         return []
     client = get_client()
     rows = [r.model_dump(mode="json") for r in responses]
     result = client.table("gemini_responses").insert(rows).execute()
-    return result.data
+    return _rows(result.data)
 
 
-def get_responses(evaluation_id: str) -> list[dict]:
+def get_responses(evaluation_id: str) -> list[Row]:
     """Get all responses for an evaluation."""
     client = get_client()
     result = (
@@ -157,23 +167,23 @@ def get_responses(evaluation_id: str) -> list[dict]:
         .order("prompt_id,run_index")
         .execute()
     )
-    return result.data
+    return _rows(result.data)
 
 
 # ── Classifications ─────────────────────────────────────────────────────────
 
 
-def save_classifications(classifications: list[ClassificationResult]) -> list[dict]:
+def save_classifications(classifications: list[ClassificationResult]) -> list[Row]:
     """Batch insert classification results."""
     if not classifications:
         return []
     client = get_client()
     rows = [c.model_dump(mode="json") for c in classifications]
     result = client.table("classifications").insert(rows).execute()
-    return result.data
+    return _rows(result.data)
 
 
-def get_classifications(evaluation_id: str) -> list[dict]:
+def get_classifications(evaluation_id: str) -> list[Row]:
     """Get all classifications for an evaluation.
 
     Classifications don't have evaluation_id directly — join through
@@ -183,45 +193,32 @@ def get_classifications(evaluation_id: str) -> list[dict]:
 
     # First get all response IDs for this evaluation
     resp_result = (
-        client.table("gemini_responses")
-        .select("id")
-        .eq("evaluation_id", evaluation_id)
-        .execute()
+        client.table("gemini_responses").select("id").eq("evaluation_id", evaluation_id).execute()
     )
-    response_ids = [r["id"] for r in resp_result.data]
+    response_ids = [r["id"] for r in _rows(resp_result.data)]
     if not response_ids:
         return []
 
     # Then get classifications for those responses
-    result = (
-        client.table("classifications")
-        .select("*")
-        .in_("response_id", response_ids)
-        .execute()
-    )
-    return result.data
+    result = client.table("classifications").select("*").in_("response_id", response_ids).execute()
+    return _rows(result.data)
 
 
 # ── Metrics ─────────────────────────────────────────────────────────────────
 
 
-def save_metrics(metrics: list[MetricSummary]) -> list[dict]:
+def save_metrics(metrics: list[MetricSummary]) -> list[Row]:
     """Batch insert computed metrics."""
     if not metrics:
         return []
     client = get_client()
     rows = [m.model_dump(mode="json") for m in metrics]
     result = client.table("metrics").insert(rows).execute()
-    return result.data
+    return _rows(result.data)
 
 
-def get_metrics(evaluation_id: str) -> list[dict]:
+def get_metrics(evaluation_id: str) -> list[Row]:
     """Get all metrics for an evaluation."""
     client = get_client()
-    result = (
-        client.table("metrics")
-        .select("*")
-        .eq("evaluation_id", evaluation_id)
-        .execute()
-    )
-    return result.data
+    result = client.table("metrics").select("*").eq("evaluation_id", evaluation_id).execute()
+    return _rows(result.data)

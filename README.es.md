@@ -111,8 +111,11 @@ cp .env.example .env      # después editalo
 SUPABASE_URL=https://<tu-proyecto>.supabase.co
 SUPABASE_KEY=<clave anon public>
 GEMINI_API_KEY=<tu clave de Gemini>
-SAMPLING_N=8
 ```
+
+`SAMPLING_N` es opcional — define cuántas muestras independientes de Gemini
+recibe cada prompt, y por defecto es 8. Bajalo a 4 para una demostración más
+rápida; una petición también puede sobrescribirlo por evaluación.
 
 ### 4. Levantarlo
 
