@@ -77,10 +77,9 @@ aeo-engine/
 ├── migrations/          esquema SQL de Supabase
 ├── docker-compose.yml   stack local — `docker compose up`
 ├── .claude/             configuración de agentes — agents/, skills/, hooks/
-├── .codex/              los mismos hooks, para el entorno Codex
 ├── .githooks/           validador de mensajes de commit
 ├── CLAUDE.md            reglas para agentes (Claude Code)
-├── AGENTS.md            reglas para agentes (Codex) — mismo contenido
+├── AGENTS.md            reglas para agentes, para entornos que leen AGENTS.md
 ├── DECISIONS.md         registro completo de decisiones (en inglés)
 └── DECISIONES.md        resumen de decisiones en español
 ```
@@ -258,7 +257,6 @@ entorno), `git-flow` (ramas, formato de commits, gobernanza de merge).
 | `conventional-commit.sh` | `commit-msg` de git | Rechaza formato inválido o atribución de IA |
 | `gitleaks` | GitHub Actions | Escanea secretos en cada push y PR |
 
-Los mismos scripts de hooks existen bajo `.codex/` para el entorno Codex.
 
 Dos hallazgos que vale registrar, ambos en `DECISIONS.md`: la identidad de un
 subagente viene del campo `agent_type` del JSON que el hook recibe por stdin, no

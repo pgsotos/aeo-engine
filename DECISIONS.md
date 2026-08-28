@@ -100,6 +100,7 @@ piece exists.
 | [ADR-013](#adr-013--git-flow-branching-main--develop--feature) · [ADR-014](#adr-014--feature-branches-rebase-never-merge) | Branch model; rebase over merge on feature branches |
 | [ADR-021](#adr-021--branch-protection-enforces-the-branch-model) | Branch protection makes that model enforced, not aspirational |
 | [ADR-015](#adr-015--secret-scanning-and-gitignore-hygiene) | Secret scanning and `.gitignore` hygiene |
+| [ADR-030](#adr-030--the-codex-harness-config-is-removed-not-fixed) | The Codex harness config is removed, not fixed |
 | [ADR-007](#adr-007--deferred-scope-accepted-risk) | Scope deferred under deadline, with the risk named |
 | [ADR-008](#adr-008--strict-branch-and-pr-governance) | *Superseded by ADR-013 + ADR-021* — the original human-gate governance |
 
@@ -776,6 +777,57 @@ before merge. False positives are handled by extending `.gitleaks.toml`, not by
 disabling the scan. Rotating a key that was exposed in a chat transcript (e.g.
 the Render key pasted during setup) is still a manual step in the provider
 dashboard.
+
+---
+
+## ADR-030 — The Codex harness config is removed, not fixed
+
+**Status:** Accepted — removes `.codex/`, committed under ADR-008-era tooling.
+
+**Context:** The brief asks for the agent scaffolding to be committed, so
+`.codex/` was added: a mirror of the Claude hooks for a second harness. It was
+committed once (`dd79b66`) and never touched again. Reviewing it before the
+final delivery turned up three facts:
+
+- **The three scripts are byte-identical** to `.claude/hooks/scripts/`. Nothing
+  was adapted; they were copied.
+- **`.codex/hooks.json` hardcodes absolute paths** into the author's home
+  directory (`/Users/…/aeo-engine/.codex/hooks/scripts/owner-guard.sh`), where
+  `.claude/settings.json` uses repository-relative ones. The Codex config
+  therefore **cannot work on any machine but the one that wrote it** — a
+  reviewer cloning the repository gets hooks pointing at a path that does not
+  exist.
+- The work was done with Claude Code; the Codex harness was never actually run
+  against this repository.
+
+**Decision:** Delete `.codex/` rather than repair it.
+
+Fixing the paths would produce a working config for a harness nobody used,
+duplicating three scripts that already exist. The brief asks to see the tooling
+because the tooling is part of the work — and this part was not part of the
+work. Showing it implies a second harness was exercised, which would be a claim
+the repository cannot support.
+
+`AGENTS.md` stays. It is harness-agnostic by convention — several tools read a
+file by that name — and unlike `.codex/`, its content is current.
+
+**Also fixed here:** `CLAUDE.md` and `AGENTS.md` both pointed at
+`opencode.json` for the MCP server list. That file is not in the repository and
+never was — a dangling reference in the two documents that describe how agents
+work on this project. MCP configuration is per-developer and names local paths
+and credentials, so it is not versioned; the tables now say so instead of
+pointing at a file that does not exist.
+
+**Consequences:**
+
+- What remains under agent tooling is what actually ran: `.claude/` (4 agents,
+  4 skills, 3 hooks, settings), `.githooks/commit-msg` wired through
+  `core.hooksPath`, and gitleaks in GitHub Actions.
+- A reviewer no longer finds a hooks config that cannot execute, and no longer
+  reads about a configuration file that is absent.
+- If a second harness is genuinely adopted later, its config should be written
+  against that harness rather than copied — and with relative paths, which is
+  the actual lesson from `.codex/hooks.json`.
 
 ---
 

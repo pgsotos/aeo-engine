@@ -89,7 +89,9 @@ bun run dev
 
 ## Available MCP tools
 
-The project is configured with these MCP servers (see `opencode.json`):
+MCP servers are configured per developer, in the harness's own settings —
+not versioned here, since each one names local paths and credentials. The set
+this project was built against:
 
 | MCP | Purpose |
 |---|---|
