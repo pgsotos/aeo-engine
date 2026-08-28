@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import BackendStatus from "./components/BackendStatus";
 import ConfidenceBar from "./components/ConfidenceBar";
 import Heatmap from "./components/Heatmap";
@@ -59,16 +59,13 @@ export default function DashboardPage() {
 
   const backendHealth = useBackendHealth();
 
-  const loadEvaluations = useCallback(async () => {
-    try {
-      setLoadingEvals(true);
-      const data = await fetchEvaluations();
-      setEvaluations(data);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load evaluations");
-    } finally {
-      setLoadingEvals(false);
-    }
+  // Set once on unmount so the long-running poll in `handleRun` can bail out
+  // instead of calling setState on a torn-down component.
+  const cancelledRef = useRef(false);
+  useEffect(() => {
+    return () => {
+      cancelledRef.current = true;
+    };
   }, []);
 
   const loadDetail = useCallback(async (id: string) => {
@@ -90,7 +87,17 @@ export default function DashboardPage() {
       try {
         setLoadingEvals(true);
         const data = await fetchEvaluations();
-        if (!cancelled) setEvaluations(data);
+        if (cancelled) return;
+        setEvaluations(data);
+        // Land the reviewer straight on a result: `/api/evaluations` is
+        // ordered most-recent-first, so the first completed row is the
+        // freshest finished evaluation. The form stays one click away
+        // behind "← Back to list".
+        const latestCompleted = data.find((ev) => ev.status === "completed");
+        if (latestCompleted) {
+          setSelectedId(latestCompleted.id);
+          void loadDetail(latestCompleted.id);
+        }
       } catch (e) {
         if (!cancelled)
           setError(e instanceof Error ? e.message : "Failed to load evaluations");
@@ -102,7 +109,7 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [loadDetail]);
 
   const handleSelect = useCallback(
     (id: string) => {
@@ -197,15 +204,39 @@ export default function DashboardPage() {
       // The backend runs the evaluation in the background and returns
       // immediately; poll the list until this run finishes.
       const { evaluation_id } = await runEvaluation(request);
-      await loadEvaluations();
+      if (cancelledRef.current) return;
 
       const deadline = Date.now() + 15 * 60_000;
+      let consecutiveFailures = 0;
+      const MAX_CONSECUTIVE_FAILURES = 5;
+
       while (Date.now() < deadline) {
         await new Promise((r) => setTimeout(r, 5_000));
-        const evals = await fetchEvaluations();
+        if (cancelledRef.current) return;
+
+        let evals: Evaluation[];
+        try {
+          evals = await fetchEvaluations();
+          consecutiveFailures = 0;
+        } catch {
+          // Render's free tier cold-starts and blips; tolerate a few
+          // transient failures before giving up on the poll.
+          consecutiveFailures += 1;
+          if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+            if (!cancelledRef.current)
+              setError(
+                "Lost connection to the backend while polling; the run may still finish — check back later.",
+              );
+            return;
+          }
+          continue;
+        }
+
+        if (cancelledRef.current) return;
         setEvaluations(evals);
+
         const mine = evals.find((e) => e.id === evaluation_id);
-        if (mine && mine.status !== "running") {
+        if (mine && mine.status !== "running" && mine.status !== "pending") {
           if (mine.status === "completed") {
             setSelectedId(evaluation_id);
             await loadDetail(evaluation_id);
@@ -215,13 +246,15 @@ export default function DashboardPage() {
           return;
         }
       }
-      setError("Evaluation is taking longer than expected; check back later.");
+      if (!cancelledRef.current)
+        setError("Evaluation is taking longer than expected; check back later.");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to run evaluation");
+      if (!cancelledRef.current)
+        setError(e instanceof Error ? e.message : "Failed to run evaluation");
     } finally {
-      setRunning(false);
+      if (!cancelledRef.current) setRunning(false);
     }
-  }, [brand, category, competitors, loadEvaluations, loadDetail]);
+  }, [brand, category, competitors, loadDetail]);
 
   // Metrics for the focus brand
   const focusMetrics = useMemo(() => {
@@ -255,8 +288,6 @@ export default function DashboardPage() {
       date: new Date(ev.created_at).toLocaleDateString(),
     }));
   }, [evaluations]);
-
-  const isResolving = resolvingCategories || resolvingCompetitors;
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -524,6 +555,45 @@ export default function DashboardPage() {
                 </span>
               </div>
             </div>
+
+            {/* Legend / how to read this */}
+            <details className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 text-sm text-zinc-400">
+              <summary className="cursor-pointer font-medium text-zinc-300">
+                How to read this dashboard
+              </summary>
+              <div className="mt-3 space-y-2 leading-relaxed">
+                <p>
+                  Every answer is classified for each brand:{" "}
+                  <span className="text-emerald-300">direct winner</span> (the
+                  brand is the #1 recommendation),{" "}
+                  <span className="text-yellow-300">alternative mention</span>{" "}
+                  (secondary option or one item in a list), or{" "}
+                  <span className="text-red-300">omitted</span> (absent — a
+                  competitor takes the direct answer). In the response text,{" "}
+                  <span className="text-zinc-200">★</span> marks a direct-winner
+                  mention and <span className="text-zinc-200">◆</span> an
+                  alternative mention.
+                </p>
+                <p>
+                  <span className="font-medium text-zinc-300">Win Rate</span> is
+                  the share of runs classified as{" "}
+                  <span className="text-emerald-300">direct winner</span>. The{" "}
+                  <span className="font-medium text-zinc-300">
+                    Wilson score confidence interval
+                  </span>{" "}
+                  is the 95% uncertainty band around that rate for the sample
+                  size — a wide band means we have not sampled enough to be
+                  confident.
+                </p>
+                <p>
+                  Each prompt type uses 2 base questions × 2 brand orderings
+                  (inverted pairs, to cancel position bias) = 4 prompts, each
+                  sampled N = {dashboard.evaluation.sampling_n} times. That is{" "}
+                  {4 * dashboard.evaluation.sampling_n} runs per prompt type per
+                  brand (shown as &quot;runs&quot; in each heatmap cell).
+                </p>
+              </div>
+            </details>
 
             {/* Heatmap */}
             {loadingDetail ? (

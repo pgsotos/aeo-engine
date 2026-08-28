@@ -7,15 +7,17 @@ interface HeatmapProps {
   metrics: MetricSummary[];
 }
 
+// `win_rate` is a 0..1 proportion from the backend (same scale as
+// ConfidenceBar). Strong: >= 60%, contested: >= 40%, weak: below.
 function winRateColor(rate: number): string {
-  if (rate >= 60) return "bg-emerald-500/20 text-emerald-300";
-  if (rate >= 40) return "bg-yellow-500/20 text-yellow-300";
+  if (rate >= 0.6) return "bg-emerald-500/20 text-emerald-300";
+  if (rate >= 0.4) return "bg-yellow-500/20 text-yellow-300";
   return "bg-red-500/20 text-red-300";
 }
 
 function winRateBgBar(rate: number): string {
-  if (rate >= 60) return "bg-emerald-500";
-  if (rate >= 40) return "bg-yellow-500";
+  if (rate >= 0.6) return "bg-emerald-500";
+  if (rate >= 0.4) return "bg-yellow-500";
   return "bg-red-500";
 }
 
