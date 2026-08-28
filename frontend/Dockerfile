@@ -16,6 +16,8 @@ COPY . .
 ARG NEXT_PUBLIC_API_URL=http://localhost:8000
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_TELEMETRY_DISABLED=1
+# Opt into `output: "standalone"` (see frontend/next.config.ts) for a slim image.
+ENV BUILD_STANDALONE=1
 RUN node ./node_modules/next/dist/bin/next build
 
 FROM node:22-slim AS runner
