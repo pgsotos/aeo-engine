@@ -45,12 +45,19 @@ def generate_corpus(
     # "platform", "team" or any other word that presumes the category is
     # software bought by a company. The same twenty questions have to mean
     # something for a beer, an airline and a supermarket (ADR-028).
+    #
+    # `{category}` also only ever appears AFTER A PREPOSITION. It may arrive as
+    # a mass noun ("beer"), a plural ("automobiles") or a plural phrase
+    # ("project management tools"), and no English article or number agreement
+    # holds for all three — "the best automobiles" and "Which beer option" both
+    # came out wrong. After a preposition the category is a topic rather than a
+    # noun phrase, and every shape reads correctly.
     direct_templates = [
         (
-            "What is the best {category} in 2025? "
+            "As of 2025, what is the best choice in {category}? "
             "Consider {brand_list}. Recommend the top one and explain why."
         ),
-        ("If you could only pick one option for {category}, which would it be among {brand_list}?"),
+        ("If you could only pick one option in {category}, which would it be among {brand_list}?"),
     ]
 
     for i, template in enumerate(direct_templates, 1):
@@ -108,8 +115,8 @@ def generate_corpus(
     # measure more per category but stop being comparable between them.
     use_case_templates = [
         (
-            "I'm choosing {category} for the first time and don't know "
-            "the market. Which of {brand_list} would you recommend, and why?"
+            "I'm new to {category} and don't know the market. "
+            "Which of {brand_list} would you recommend, and why?"
         ),
         (
             "I want the best value for money in {category}. "
@@ -147,10 +154,7 @@ def generate_corpus(
             "Which of {brand_list} is the highest quality in {category}, "
             "and what makes it stand out?"
         ),
-        (
-            "Which {category} option is the most reliable: {brand_list}? "
-            "Explain what separates them."
-        ),
+        ("Which of {brand_list} is the most reliable in {category}? Explain what separates them."),
     ]
 
     for i, template in enumerate(feature_templates, 1):

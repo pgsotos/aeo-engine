@@ -135,3 +135,47 @@ def test_corpus_size_is_unchanged_for_any_category() -> None:
     or results across categories stop being comparable."""
     for brand, category, competitors in NON_SOFTWARE_CASES:
         assert len(generate_corpus(brand, category, competitors)) == 20
+
+
+# ── Category interpolation is grammar-safe ──────────────────────────────────
+#
+# A category may be a mass noun ("beer"), a plural ("automobiles"), or a plural
+# phrase ("project management tools"). English number and article agreement
+# cannot hold for all three at once, so no template may place the category
+# where agreement is required: "the best automobiles", "Which automobiles
+# option". The rule that survives every shape is to put the category after a
+# preposition, where it is a topic rather than a noun phrase.
+
+CATEGORY_SHAPES = ["beer", "automobiles", "project management tools", "coffee"]
+
+# The prepositions a category may follow.
+_ALLOWED_PREFIXES = (" in ", " for ", " to ", " about ", " of ")
+
+
+@pytest.mark.parametrize("category", CATEGORY_SHAPES)
+def test_category_always_follows_a_preposition(category: str) -> None:
+    """Every occurrence of the category sits after a preposition."""
+    corpus = generate_corpus("Focus", category, ["Rival A", "Rival B"])
+    offenders = []
+    for prompt in corpus:
+        text = prompt.text
+        start = text.find(category)
+        while start != -1:
+            preceding = text[:start]
+            if not preceding.endswith(_ALLOWED_PREFIXES):
+                offenders.append((prompt.id, f"...{preceding[-28:]}[{category}]"))
+            start = text.find(category, start + 1)
+    assert not offenders, "category used as a bare noun phrase: " + "; ".join(
+        f"{pid} {ctx}" for pid, ctx in offenders[:4]
+    )
+
+
+@pytest.mark.parametrize("category", CATEGORY_SHAPES)
+def test_no_number_agreement_traps(category: str) -> None:
+    """Guard the two constructions that actually broke: an article before the
+    category, and the category used attributively before a noun."""
+    corpus = generate_corpus("Focus", category, ["Rival A", "Rival B"])
+    for prompt in corpus:
+        lowered = prompt.text.lower()
+        assert f"best {category}" not in lowered, f"{prompt.id}: 'best {category}' needs agreement"
+        assert f"{category} option" not in lowered, f"{prompt.id}: '{category} option' reads wrong"

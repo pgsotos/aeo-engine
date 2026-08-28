@@ -1178,6 +1178,15 @@ Source Auditor work started surfacing them.
 "integration" survives. A test asserts the absence of that vocabulary across
 four non-software categories, so the property is enforced rather than intended.
 
+**Interpolation is grammar-safe.** A category arrives as a mass noun
+(`beer`), a plural (`automobiles`) or a plural phrase (`project management
+tools`), and no English article or number agreement holds for all three:
+"the best automobiles" and "Which beer option" both came out wrong. The rule
+that survives every shape is that **`{category}` only ever appears after a
+preposition** — `in`, `for`, `to`, `about`, `of` — where it reads as a topic
+rather than a noun phrase. A test walks every occurrence in every prompt and
+asserts the preceding text ends in one, so the rule cannot quietly lapse.
+
 Two dimensions needed an actual replacement rather than a word swap:
 
 - **`use_case` needs a situation.** The only situations that transfer across
