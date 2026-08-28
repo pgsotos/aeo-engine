@@ -58,8 +58,9 @@ the data reads like a conclusion instead of a log dump:
   metric code — no LLM summarizer that could break traceability.
 - **Source Auditor** — which cited domains appear in the responses and how each
   co-occurs with the focus brand being the direct winner. It relies on
-  `google_search` grounding metadata; see **ADR-026** for the current caveat
-  that `gemini-3.6-flash` rarely returns usable grounding chunks today.
+  `google_search` grounding metadata, which a controlled A/B measured at
+  **20.8%** of calls. See **ADR-026** — an earlier version of it concluded the
+  opposite from a measurement taken before the capture code shipped.
 
 ## Repository layout
 

@@ -71,7 +71,7 @@ Linear is the brief's configuration, not a constant in the code.
 | [ADR-011](#adr-011--gemini-36-flash-as-the-measured-engine) | `gemini-3.6-flash` as the measured engine |
 | [ADR-012](#adr-012--generic-aeo-engine-no-hardcoded-brands) | Generic engine — no hardcoded brands |
 | [ADR-025](#adr-025--category-cleaning-heuristic-and-scoped-frontend-test-harness) | Resolver cleaning heuristic, 404 on empty, scoped vitest harness |
-| [ADR-026](#adr-026--gemini-36-flash-grounding-is-unreliable-with-google-search-via-chat) | `gemini-3.6-flash` grounding is unreliable — 0/480 responses had sources |
+| [ADR-026](#adr-026--grounding-works-on-gemini-36-flash-the-first-measurement-was-wrong) | Grounding works (20.8% measured) — the first measurement was wrong |
 
 ### B · Architecture — the stack, and the one abandoned
 
@@ -941,7 +941,8 @@ attribute (documented stochasticity, see ASM-003). Impact rows ship end to end:
 `GET /api/evaluations/{id}` returns them as `source_impact`, and the dashboard
 renders them in the Source Auditor panel. Against `gemini-3.6-flash` that panel
 is empty in practice — the model returns no grounding chunks at all, so there is
-nothing to attribute. ADR-026 records that measurement and its revisit trigger.
+nothing to attribute for those runs. ADR-026 has the measured grounding rate
+and why an earlier reading of it was wrong.
 
 ---
 
@@ -1049,45 +1050,95 @@ fires only on a subset of calls, and the attribution signal is the chunk's
 title formats that materially defeat the heuristic, or segment offsets that
 misalign with stored `raw_text`.
 
-> **Review note (ADR-026, 2026-08-28):** the ASM-003 expectation of "~20–30%
-> of calls carrying grounding chunks" was not reproduced on `gemini-3.6-flash`.
-> See [ADR-026](#adr-026--gemini-36-flash-grounding-is-unreliable-with-google-search-via-chat)
-> for the empirical evidence and its consequence for the Source Auditor.
+> **Review note (2026-08-28, revised):** an earlier note here declared this
+> assumption unmet on `gemini-3.6-flash`. That note is **withdrawn** — it rested
+> on a measurement taken eight minutes before the grounding code reached
+> production. A controlled A/B on the production call path measured **20.8%**,
+> inside the assumed band. This assumption holds as written; see
+> [ADR-026](#adr-026--grounding-works-on-gemini-36-flash-the-first-measurement-was-wrong).
 
 ---
 
-## ADR-026 — `gemini-3.6-flash` grounding is unreliable with `google_search` via chat
+## ADR-026 — Grounding works on `gemini-3.6-flash`; the first measurement was wrong
 
-**Status:** Accepted (documented)
+**Status:** Accepted — supersedes the original ADR-026, which reached the
+opposite conclusion from an invalid measurement. The retraction is kept in full
+below rather than deleted, because how the error happened is the useful part.
 
-**Context / Decision:** the Source Auditor (ADR-015) and the grounding assumptions
-in ASM-003 rely on the `google_search` grounding tool returning citation chunks
-for a meaningful share of responses. This ADR records the empirical result that,
-against **`gemini-3.6-flash`** served through the `google-genai` chat interface,
-that expectation does not hold: the model returns no usable grounding chunks.
+**Context:** The Source Auditor (ADR-015) and ASM-003 assume `google_search`
+grounding returns citation chunks on a meaningful share of calls (~20–30%). The
+original ADR-026 recorded that this "does not hold" for `gemini-3.6-flash` and
+declared it a model limitation. That conclusion was false.
 
-**Observed evidence (2026-08-28):**
-- Three real evaluations on `develop` (Linear, Notion, Airtable; N=8) produced
-  480 persisted responses; **0 / 480** carried a non-null `grounding_metadata`.
-- Direct one-off calls returned `grounding_metadata` that was sometimes `null`
-  and sometimes truthy but with `groundingChunks = 0` — never usable citations.
-- The pipeline configuration is correct: `tools=[google_search]` is attached to
-  the request and `grounding_metadata` is persisted verbatim. This is a model /
-  provider limitation, not a pipeline or persistence bug.
+**Decision:** Grounding **works**. ASM-003's assumed rate is confirmed, not
+refuted. The Source Auditor's design needs no change.
+
+**Measured evidence (2026-08-28, controlled A/B, production call path):**
+
+24 calls per condition through `call_gemini`, same model and config, using the
+real corpus prompt from `generate_corpus`:
+
+| Condition | Grounding rate |
+|---|---|
+| Production prompt, concurrency 4 | **20.8%** (5/24) |
+| Same prompt, citation suffix stripped, concurrency 4 | 20.8% (5/24) |
+| Production prompt, concurrency 75 | 16.7% (4/24) |
+
+20.8% sits inside ASM-003's assumed 20–30% band. Neither `CITATION_SUFFIX` nor
+concurrency is the deciding factor — both hypotheses were tested and rejected.
+
+**Why the original measurement was wrong.** Three compounding errors:
+
+1. **A timing error, and the decisive one.** The original ADR was merged at
+   **08:24**; the grounding capture code reached production at **08:32**
+   (PR #25). Its "0 / 480" measured evaluations whose zero was *expected* —
+   production was not capturing grounding yet. A zero that the setup guarantees
+   carries no information about the model.
+2. **A casing error in the corroborating check.** The pipeline persists via
+   `model_dump(mode="json")` without `by_alias`, so keys are **snake_case**
+   (`grounding_chunks`). The ADR reported `groundingChunks = 0` — camelCase, a
+   key that never exists in the stored payload. Any check written that way reads
+   zero regardless of the truth. Reproduced: `gm.get("grounding_chunks")` → 1
+   chunk; `gm.get("groundingChunks")` → 0.
+3. **Generalising from three runs launched one second apart** (11:50:28, :29,
+   :30) without a control.
+
+**The contradicting data was already in the database when the ADR was written:**
+20 responses carry real grounding, and the pipeline parsed and persisted them
+correctly into **67 `grounding_sources` rows** with real domains
+(`laneapp.co`, `valueaddvc.com`, `t0ggles.com`, …) and **42
+`grounding_supports` rows**. `extract_sources` and `extract_supports` process
+them without modification. The capture chain was never broken.
+
+**What is still unexplained — stated as unknown rather than guessed.** After the
+08:32 deploy, one evaluation (11:44) grounded at **31.2%** while three at 11:50
+and one at 12:20 grounded at **0%**. Model, code and concurrency were ruled out
+by measurement. Daily quota exhaustion on the grounding tool is the leading
+hypothesis; it is **not** confirmed, and this ADR does not assert it.
 
 **Consequences:**
-- Source impact (Source Auditor) computes over the grounded subset; with no
-  grounding chunks there is **nothing to attribute**, so source-level impact is
-  effectively zero for `gemini-3.6-flash` today.
-- ADR-015 / ASM-003 remain valid as designed; their ~20–30% expectation does not
-  hold for flash and must not be assumed.
-- The Source Auditor feature ships but has no actionable data until a model /
-  serving mode with reliable grounding is used (candidate: a `Pro` tier or a
-  different API mode that returns grounding chunks).
+- ASM-003 stands as written. The review note appended to it, which declared its
+  rate expectation unmet, is withdrawn.
+- The Source Auditor has real data. It renders empty for the evaluations stored
+  today because those either predate the 08:32 deploy or fall in the
+  unexplained zero window — not because grounding is unavailable.
+- The only evaluation carrying grounding evidence is stuck in `running`
+  (see ADR-027), so it is absent from every completed-evaluation view. Its 64
+  responses must be preserved.
 
-**Revisit trigger:** re-run the same validation after switching to a model or
-serving configuration that returns `groundingChunks > 0`; then re-baseline the
-grounding-rate expectation for that configuration.
+**Revisit trigger:** re-run the A/B above. If the rate drops to zero again while
+the code is unchanged, instrument the quota hypothesis directly rather than
+inferring a model limitation.
+
+**Process consequence, recorded because it caused the error twice.** Two
+measurements in this project produced confident, wrong conclusions for the same
+reason: the experiment did not match the production path. The first ADR-026
+measured before the code shipped; the first attempt to refute it used a
+hand-written prompt while every production prompt carries `CITATION_SUFFIX`.
+Before a measurement becomes a decision, the harness must exercise the same code
+path as production — here, `generate_corpus` → `call_gemini` — and a negative
+result needs a positive control proving the instrument can detect the thing at
+all.
 
 ---
 

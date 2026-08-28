@@ -213,15 +213,17 @@ y qué dominio se correlaciona con el Direct Answer Win Rate de la marca foco.
 La captura de grounding (con `google_search`) y el ranking por impacto están en
 el backend y en la API; el dashboard los muestra por evaluación.
 
-**Una limitación documentada del grounding** (ADR-026). `gemini-3.6-flash`
-devuelve grounding de Google Search de forma muy inconsistente: en 480
-respuestas reales de 3 evaluaciones, **0/480** persistió `grounding_metadata` no
-nulo. El pipeline está bien configurado (`tools=[google_search]`, persistencia
-verbatim) — es una limitación del **modelo**, no un bug. El Source Auditor
-funciona y se despliega, pero hasta que se use un modelo o modo que devuelva
-`groundingChunks > 0` (un tier Pro, por ejemplo) no tiene datos que atribuir.
-El ADR define el trigger de revisión: re-evaluar al cambiar a un modelo con
-grounding confiable y re-baselinear la tasa esperada.
+**Una medición que estuvo mal, y su corrección** (ADR-026). La primera versión
+de este ADR concluyó que `gemini-3.6-flash` no devuelve grounding utilizable, a
+partir de **0/480** respuestas. Era falso. Ese ADR se escribió a las **08:24**;
+el código que captura grounding llegó a producción a las **08:32** — midió ceros
+que el propio montaje garantizaba. Un A/B controlado sobre el path real de
+producción midió **20.8%** de grounding, dentro del rango que ASM-003 asumía.
+Se probaron y descartaron dos hipótesis alternativas (el sufijo de citación y la
+concurrencia). Queda sin explicar por qué algunas corridas posteriores al deploy
+dieron 0%; la sospecha de cuota diaria **no** está confirmada y el ADR no la
+afirma. La versión anterior se conserva dentro del ADR: cómo se produjo el error
+es la parte útil.
 
 **Executive Summary** (PR #24, ya fusionado). Para que el detalle de una
 evaluación sea legible por una persona, se agregó una capa de interpretación
