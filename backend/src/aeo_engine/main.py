@@ -59,8 +59,13 @@ app.add_middleware(
 
 
 @app.get("/health")
+@app.get("/api/health")
 async def health() -> dict:
-    """Health check endpoint."""
+    """Health check endpoint.
+
+    Exposed at both `/health` (for server-side uptime pingers) and `/api/health`
+    (for the browser: content blockers drop requests to a bare `/health` path).
+    """
     return {"status": "ok", "gemini_configured": bool(settings.gemini_api_key)}
 
 
