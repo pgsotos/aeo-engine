@@ -341,6 +341,94 @@ dashboard.
 
 ---
 
+## ADR-016 — Health check served at `/api/health`
+
+**Status:** Accepted
+
+**Context:** The dashboard polls the backend to show a connection banner. It
+polled `/health`. Browser content blockers (uBlock Origin, Brave shields, common
+privacy filter lists) drop **any** request whose path ends in `/health` or
+`/healthz` — the fetch fails client-side in about a millisecond, before it ever
+leaves the browser. Users running such an extension saw a red "Backend not
+available" banner while the backend was fully up and the rest of the dashboard
+(which calls `/api/*`) worked fine.
+
+**Decision:** Serve the same handler at **both** `/health` and `/api/health`.
+The browser uses `/api/health`; `/health` stays for server-side uptime pingers,
+which have no content blockers. The client also starts optimistic and only
+reports "not available" after two consecutive failed checks, with a 15s timeout
+to survive Render free-tier cold starts.
+
+**Consequences:** One extra route registration. Verified in production that
+`/health` and `/healthz` are blocked in the browser while `/api/health`,
+`/api/prompts` and `/api/evaluations` all reach the server. Any future
+browser-facing endpoint should live under `/api/` for the same reason.
+
+---
+
+## ADR-017 — Evaluations run in the background, sampled in parallel
+
+**Status:** Accepted
+
+**Context:** `POST /api/evaluate` was synchronous and sampled the 20-prompt
+corpus **one prompt at a time**, holding the HTTP request open for about six
+minutes. Browsers and proxies time that out, so the UI showed an error while the
+run was actually still going; the evaluation only appeared in the list minutes
+later. It also pinned Render's single free-tier instance for the whole run.
+
+**Decision:**
+
+- `POST /api/evaluate` creates the evaluation row, returns immediately with
+  `status: "running"`, and does the work in a FastAPI `BackgroundTask`. Clients
+  poll `GET /api/evaluations/{id}`; the dashboard polls every 5s.
+- Every prompt is sampled concurrently under **one shared semaphore**
+  (`EVAL_CONCURRENCY`) instead of a per-prompt one, so the whole corpus is in
+  flight at once with a single global cap on Gemini calls.
+- Each prompt's raw responses are persisted as that prompt finishes, so progress
+  is visible and partial work survives.
+- A prompt that fails is skipped (`return_exceptions=True`) rather than sinking
+  the whole run; the run only fails if every prompt fails.
+- `call_gemini` retries transient 429/5xx a few times with backoff, since
+  parallel sampling hits the rate limit harder.
+
+Measured: ~372s → ~113s for a default N = 8 run; the endpoint answers in ~1s.
+
+**Consequences:** The tab no longer has to stay open on one long request. But a
+background task is **lost if the worker restarts mid-run** — the row stays
+`running` forever. Acceptable for this deliverable; a durable queue (or the
+Temporal design from the superseded ADR-004) is the real fix if evaluations ever
+need to survive deploys. Raising `EVAL_CONCURRENCY` too far will trip Gemini
+rate limits faster than the retry can absorb.
+
+---
+
+## ADR-018 — Local stack runs on Docker Compose
+
+**Status:** Accepted
+
+**Context:** Running the project locally meant installing uv and Bun and
+starting two servers by hand. A reviewer should be able to run it in one
+command.
+
+**Decision:** A `Dockerfile` per service plus a root `docker-compose.yml`:
+`docker compose up --build` serves the backend on :8000 and the frontend on
+:3000. There is **no local Postgres** — the containers use the hosted Supabase
+credentials from `backend/.env` (see ADR-005 for why local Supabase was dropped).
+
+Two build details worth recording:
+
+- The frontend image installs dependencies with **Bun** (matching the lockfile)
+  but builds and serves with **Node**: `bun run build` segfaults on linux/arm64.
+- `output: "standalone"` is gated behind `BUILD_STANDALONE=1`, set only by the
+  Dockerfile. Vercel does its own output tracing and fails the build with
+  `ENOENT next-server.js.nft.json` when standalone output is on.
+
+**Consequences:** Two more Dockerfiles to keep in step with the runtimes. The
+containers still need real Supabase and Gemini credentials — there is no fully
+offline mode.
+
+---
+
 ## Section 2 — Assumptions (ASM)
 
 Assumptions are things taken as true without full proof. Each carries a risk if
