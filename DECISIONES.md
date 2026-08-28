@@ -149,6 +149,16 @@ dicho sin suavizar: es una capa, no dos.
 
 ### Cómo se trabajó
 
+**Se quitó `.codex/`** (ADR-030). Se había commiteado un espejo de los hooks
+para un segundo entorno, pero al revisarlo antes de la entrega aparecieron tres
+cosas: los tres scripts son **byte-idénticos** a los de `.claude/`, su
+`hooks.json` **hardcodea rutas absolutas** al directorio del autor —así que no
+puede funcionar en la máquina de nadie más— y ese entorno nunca se usó contra
+este repositorio. Arreglar las rutas habría dejado un config funcional para algo
+que no se ejecutó; mostrarlo insinuaría un segundo entorno que el repo no puede
+respaldar. Queda lo que sí corrió. En el mismo cambio se corrigió que
+`CLAUDE.md` y `AGENTS.md` apuntaran a un `opencode.json` que no existe.
+
 El encargo pide versionar el andamiaje de agentes, así que también está
 documentado: el modelo de ramas Git Flow (ADR-013), rebase en lugar de merge en
 ramas de trabajo (ADR-014), y escaneo de secretos con higiene de `.gitignore`
