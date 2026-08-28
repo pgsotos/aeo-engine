@@ -15,6 +15,7 @@ import DashboardLegend from "./DashboardLegend";
 import ExecutiveSummary from "./ExecutiveSummary";
 import Heatmap from "./Heatmap";
 import ResponseCard from "./ResponseCard";
+import SearchQueries from "./SearchQueries";
 import SourceAuditor from "./SourceAuditor";
 
 interface EvaluationDashboardProps {
@@ -105,6 +106,18 @@ export default function EvaluationDashboard({
               Source Auditor
             </h2>
             <SourceAuditor rows={dashboard.source_impact ?? []} />
+          </section>
+
+          <section>
+            <h2 className="mb-1 text-lg font-semibold text-zinc-200">
+              What the Engine Searched For
+            </h2>
+            <p className="mb-4 max-w-2xl text-sm text-zinc-400">
+              The queries Gemini ran against Google Search before answering —
+              the step upstream of every number on this page, and the one AEO
+              work can act on.
+            </p>
+            <SearchQueries rows={dashboard.search_queries ?? []} />
           </section>
 
           {responses.length > 0 && (

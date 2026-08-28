@@ -82,15 +82,29 @@ Create a key at https://aistudio.google.com/apikey — the free tier is enough.
 """
 
 
+_client: genai.Client | None = None
+
+
 def _get_client() -> genai.Client:
-    """Create a Gemini client from settings.
+    """Get or create the Gemini client (singleton), mirroring `database.get_client`.
+
+    The client is reused because it owns an HTTP connection pool. Building one
+    per call — which is what this did, from inside `_sync_call` — meant 160
+    clients per evaluation at 20 prompts x N=8, each with its own pool, on a
+    512 MB instance. The SDK client is stateless with respect to a request;
+    per-call state lives in the chat session opened on top of it, so sharing it
+    across concurrent calls does not leak context between samples.
 
     Raises with setup instructions when the key is absent, rather than letting
-    the SDK fail deep inside an evaluation.
+    the SDK fail deep inside an evaluation. Nothing is cached in that case, so a
+    later call with the key configured still succeeds.
     """
-    if not settings.gemini_api_key:
-        raise RuntimeError(f"Missing GEMINI_API_KEY.\n{_SETUP_HINT}")
-    return genai.Client(api_key=settings.gemini_api_key)
+    global _client
+    if _client is None:
+        if not settings.gemini_api_key:
+            raise RuntimeError(f"Missing GEMINI_API_KEY.\n{_SETUP_HINT}")
+        _client = genai.Client(api_key=settings.gemini_api_key)
+    return _client
 
 
 def _is_transient(exc: Exception) -> bool:

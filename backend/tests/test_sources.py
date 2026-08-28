@@ -8,8 +8,10 @@ first-class cases.
 
 from aeo_engine.models import Classification, ClassificationResult, GroundingSource
 from aeo_engine.sources import (
+    aggregate_search_queries,
     compute_source_impact,
     extract_domain,
+    extract_search_queries,
     extract_sources,
     extract_supports,
 )
@@ -242,3 +244,81 @@ def test_source_impact_excludes_unknown_domains() -> None:
 def test_source_impact_empty_inputs() -> None:
     """No sources, no classifications → empty matrix (never raises)."""
     assert compute_source_impact([], [], {}) == []
+
+
+# ── Segments whose start_index is omitted ───────────────────────────────────
+#
+# Protobuf leaves an integer field out when it equals 0, so a support that
+# begins at the very start of the answer arrives with no `start_index` at all.
+# Measured against 100 stored responses: 47 of 321 supports (15%) look like
+# this. They are also the ones that matter most — the opening sentence is
+# where an answer engine names its recommendation.
+
+
+def test_missing_start_index_is_read_as_zero() -> None:
+    payload = {
+        "grounding_supports": [
+            {"segment": {"end_index": 42}, "grounding_chunk_indices": [0]},
+        ]
+    }
+    supports = extract_supports(payload)
+    assert len(supports) == 1
+    assert supports[0].segment_start == 0
+    assert supports[0].segment_end == 42
+
+
+def test_missing_end_index_is_still_skipped() -> None:
+    """An absent end has no such defensible default: 0 would make the segment
+    empty and any other value would be invented."""
+    payload = {"grounding_supports": [{"segment": {"start_index": 5}}]}
+    assert extract_supports(payload) == []
+
+
+def test_explicit_zero_start_still_works() -> None:
+    payload = {"grounding_supports": [{"segment": {"start_index": 0, "end_index": 10}}]}
+    assert extract_supports(payload)[0].segment_start == 0
+
+
+# ── Search queries ──────────────────────────────────────────────────────────
+
+
+def test_extract_search_queries() -> None:
+    payload = {"web_search_queries": ["Linear vs Jira comparison", "best pm tool 2025"]}
+    assert extract_search_queries(payload) == [
+        "Linear vs Jira comparison",
+        "best pm tool 2025",
+    ]
+
+
+def test_search_queries_absent_or_empty() -> None:
+    assert extract_search_queries(None) == []
+    assert extract_search_queries({}) == []
+    assert extract_search_queries({"web_search_queries": None}) == []
+
+
+def test_search_queries_are_trimmed_and_deduped_preserving_order() -> None:
+    """The same query recurs across the N samples of one prompt; a panel wants
+    each distinct query once, in the order the model first ran it."""
+    payload = {
+        "web_search_queries": ["  best pm tool  ", "Linear vs Jira", "best pm tool", ""],
+    }
+    assert extract_search_queries(payload) == ["best pm tool", "Linear vs Jira"]
+
+
+def test_aggregate_search_queries_counts_across_responses() -> None:
+    payloads = [
+        {"web_search_queries": ["Linear vs Jira", "best pm tool"]},
+        {"web_search_queries": ["Linear vs Jira"]},
+        None,
+        {"web_search_queries": ["Linear vs Jira", "best pm tool"]},
+    ]
+    rows = aggregate_search_queries(payloads)
+    assert [(r.query, r.count) for r in rows] == [
+        ("Linear vs Jira", 3),
+        ("best pm tool", 2),
+    ]
+
+
+def test_aggregate_search_queries_empty() -> None:
+    assert aggregate_search_queries([]) == []
+    assert aggregate_search_queries([None, {}]) == []
