@@ -189,6 +189,20 @@ corridas separadas en el tiempo no es válido; por eso cada respuesta guarda su
 
 ---
 
+**Las evaluaciones no son reanudables** (ADR-029). Se lanzaron tres
+evaluaciones en cinco minutos; cada una limita sus llamadas a Gemini en 25, así
+que tres a la vez son ~75 en vuelo. Bajo esa carga empezaron a fallar prompts, y
+una corrida quedó guardada con **9 de 20 prompts** y marcada como `completed`:
+le faltan enteros los tipos `feature` y `negative`, y su DWR de 48.6% no es
+comparable con ninguna evaluación completa.
+
+Conviene separar dos palabras que no son lo mismo: la **concurrencia** es
+cuántas llamadas van en paralelo —es la causa—, y la **reanudación** es poder
+retomar una corrida cortada por la mitad —es el remedio, y no existe—. Bajar la
+concurrencia hace que pase menos seguido; sólo la reanudación lo vuelve
+recuperable cuando pasa. El ADR dice qué habría que construir y por qué no se
+construyó ahora. Mitigación disponible hoy: correr las evaluaciones de a una.
+
 ## Lo que se dejó afuera
 
 **Otros motores** (OOS-002). Solo Gemini. Cada motor tiene una forma de

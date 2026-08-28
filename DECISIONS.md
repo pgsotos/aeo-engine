@@ -82,6 +82,7 @@ Linear is the brief's configuration, not a constant in the code.
 | [ADR-005](#adr-005--immutable-oltp-supabase--postgresql--olap-clickhouse) | Immutable raw responses; the OLAP half superseded |
 | [ADR-017](#adr-017--evaluations-run-in-the-background-sampled-in-parallel) | Background evaluations with parallel sampling |
 | [ADR-027](#adr-027--a-heartbeat-because-status-cannot-tell-dead-from-busy) | A heartbeat — `status` cannot tell a dead job from a busy one |
+| [ADR-029](#adr-029--evaluations-are-not-resumable-partial-runs-are-recorded-as-debt) | Evaluations are not resumable — partial runs recorded as debt |
 | [ADR-016](#adr-016--health-check-served-at-apihealth) | Health check at `/api/health` — content blockers |
 | [ADR-001](#adr-001--single-monorepo) | Single monorepo |
 | [ADR-018](#adr-018--local-stack-runs-on-docker-compose) | `docker compose up` for the local stack |
@@ -1304,6 +1305,93 @@ works against a real case.
 **Revisit trigger:** a live run swept early (lower the threshold's confidence,
 not the threshold), or moving evaluations out of process — a real queue makes
 the heartbeat redundant and the worker's own liveness authoritative.
+
+---
+
+## ADR-029 — Evaluations are not resumable; partial runs are recorded as debt
+
+**Status:** Accepted (debt, deliberately unpaid) — records a defect found in
+production on 2026-08-28 and the reason its fix is deferred rather than rushed.
+
+**Context — a real failure, not a hypothetical.** Three evaluations were
+launched within five minutes (SKY Airline 14:48, Guinness 14:51, Jetsmart
+14:53). Each caps its own Gemini calls at `EVAL_CONCURRENCY = 25`, so three at
+once is ~75 in flight. Under that load prompts began failing, and this is what
+was stored:
+
+| | Jetsmart / airlines |
+|---|---|
+| Prompts that produced responses | **9 of 20** |
+| Responses | 72 of 160 |
+| Prompt types with metrics | **3 of 5** — `feature` and `negative` missing entirely |
+| Status | **`completed`** |
+| Reported DWR | **48.6%** |
+
+That 48.6% is not comparable with any complete evaluation. The two missing
+types are the extremes of the distribution — `feature` averages 21% across
+stored runs and `negative` 62% — so dropping them does not add noise, it moves
+the number in a direction nobody can see from the dashboard.
+
+**The mechanism.** `_execute_evaluation` gathers all twenty prompts with
+`return_exceptions=True` and skips the ones that raised. Its only guard is
+`if not all_classifications: raise` — which catches the *total* failure. Losing
+one to nineteen prompts is silent, and the run is marked `completed` with
+whatever survived.
+
+**Two words that are not the same thing.** Naming these apart matters, because
+they need different fixes:
+
+- **Concurrency** is how many calls are in flight — the semaphore, and the
+  number of evaluations running at once. It is the **cause** here.
+- **Resumability** is whether a run that stopped part-way can be continued
+  instead of discarded. It is the **remedy**, and it does not exist.
+
+Fixing concurrency (a global cap across evaluations, or backoff on rate limits)
+reduces how often this happens. Only resumability makes it recoverable when it
+does.
+
+**Decision:** Record the defect, do not fix it in this deliverable. Three
+things would have to be built, and each has a design question this project has
+not answered:
+
+1. **Honest status.** `completed` must stop meaning "some prompts finished". A
+   `partial` state with a stored count of missing prompts, surfaced in the
+   dashboard, so a number derived from 45% of the corpus is never displayed
+   like one derived from all of it.
+2. **Resume.** Re-running only the prompts with no responses, keyed on
+   `(evaluation_id, prompt_id, run_index)`. The raw responses are already
+   immutable and addressable (ADR-005), so the data model supports it — what is
+   missing is the idempotency guarantee on re-entry.
+3. **A global concurrency cap.** The semaphore is per-evaluation, so N
+   simultaneous runs multiply the load by N. A process-wide budget would make
+   the failure rarer regardless of how many evaluations are started.
+
+**Why deferred rather than done:** the honest-status change touches the schema,
+the API contract and the dashboard; resume needs an idempotency design that
+`_execute_evaluation` does not currently have; and this was found after the
+deliverable's release. Shipping a half-designed resume is how partial runs got
+recorded as complete in the first place.
+
+**Interim mitigation, available today:** run evaluations one at a time. A single
+run at concurrency 25 has not exhibited this. The one partial row is left in
+place rather than deleted — like the stuck run in ADR-027, it is the evidence.
+
+**Consequences:**
+- One stored evaluation (Jetsmart, 2026-08-28) reports a DWR over an incomplete
+  corpus. Every other stored evaluation was audited and is complete: correct
+  response count and all five prompt types.
+- A reviewer reading the dashboard cannot tell that row apart from the others.
+  That is the defect, stated plainly rather than hidden.
+
+**Related:** ADR-027 states that partial completion is not attempted, and means
+it for the dead-job sweep — the sweep marks a stuck run `failed` rather than
+scoring its partial output. The success path did the opposite. The two are now
+consistent in intent and inconsistent in behaviour, which is exactly what this
+entry exists to flag.
+
+**Revisit trigger:** a second partial run appearing, or any use of the metric
+where cross-evaluation comparison matters — at which point honest status stops
+being debt and becomes a correctness requirement.
 
 ---
 
