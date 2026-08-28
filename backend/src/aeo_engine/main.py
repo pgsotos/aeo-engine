@@ -241,6 +241,12 @@ async def resolve_competitors(brand: str, category: str) -> CompetitorsResponse:
         raise HTTPException(status_code=400, detail="category is required")
 
     competitors = await resolve_brand_competitors(brand.strip(), category.strip())
+    if not competitors:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Could not resolve competitors for '{brand}'",
+        )
+
     return CompetitorsResponse(
         brand=brand.strip(),
         category=category.strip(),

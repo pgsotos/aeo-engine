@@ -17,6 +17,39 @@ DEFAULT_MODEL = "gemini-3.6-flash"
 _MAX_RETRIES = 3
 _RETRY_BASE_DELAY = 1.0  # seconds; grows 3x per attempt
 
+# Residue defense for category resolves: the low token cap can truncate an
+# answer mid-sentence, leaking meta-language like "Select the…". Keep the set
+# small and conservative — a real category must never be rejected here (Retry
+# is the recovery path when a legit token is over-aggressively dropped).
+_META_BLACKLIST = (
+    "select",
+    "please",
+    "here are",
+    "here is",
+    "and more",
+    "such as",
+    "examples include",
+    "for example",
+)
+_MAX_CATEGORY_LEN = 50
+
+
+def _clean_categories(raw: str, *, max_len: int = _MAX_CATEGORY_LEN) -> list[str]:
+    """Split a Gemini category response and drop meta-language/truncation residue.
+
+    Pure function: strips surrounding whitespace/quotes, filters empty chunks,
+    drops anything containing a conservative meta-language token, and caps each
+    category's length. No hidden state, no I/O.
+    """
+    categories: list[str] = []
+    for chunk in raw.split(","):
+        cleaned = chunk.strip().strip('"').strip("'")
+        lowered = cleaned.lower()
+        if not cleaned or any(token in lowered for token in _META_BLACKLIST):
+            continue
+        categories.append(cleaned[:max_len])
+    return categories
+
 
 _SETUP_HINT = """
 Gemini is not configured. Set this in backend/.env (see .env.example):
@@ -131,7 +164,7 @@ async def resolve_brand_categories(brand: str) -> list[str]:
             model=DEFAULT_MODEL,
             config=types.GenerateContentConfig(
                 temperature=0.3,
-                max_output_tokens=128,
+                max_output_tokens=512,
             ),
         )
         response = chat.send_message(prompt)
@@ -139,14 +172,12 @@ async def resolve_brand_categories(brand: str) -> list[str]:
 
     raw = await asyncio.to_thread(_sync_call)
 
-    # Parse comma-separated response, strip whitespace, filter empties
-    categories = [c.strip().strip('"').strip("'") for c in raw.split(",")]
-    return [c for c in categories if c]
+    # Parse + clean the comma-separated response: drop meta-language/truncation
+    # residue and cap each category's length.
+    return _clean_categories(raw)
 
 
-async def resolve_brand_competitors(
-    brand: str, category: str
-) -> list[Competitor]:
+async def resolve_brand_competitors(brand: str, category: str) -> list[Competitor]:
     """Ask Gemini who the main competitors are for a brand in a category.
 
     Returns a list of Competitor objects with name and reason.

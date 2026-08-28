@@ -10,15 +10,19 @@ import statistics
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from fastapi.testclient import TestClient
 
-from aeo_engine.main import _execute_evaluation
+from aeo_engine.main import _execute_evaluation, app
 from aeo_engine.models import (
     Classification,
     ClassificationResult,
+    Competitor,
     MetricSummary,
     PromptRecord,
     PromptType,
 )
+
+client = TestClient(app)
 
 FOCUS_BRAND = "Linear"
 PER_TYPE_RATES = [0.5, 0.75, 1.0, 0.25, 0.6]
@@ -151,3 +155,52 @@ async def test_execute_evaluation_skips_consistency_when_single_type() -> None:
 
         for call in mock_update.call_args_list:
             assert "consistency" not in call.args[1]
+
+
+def test_resolve_competitors_404_when_empty_result() -> None:
+    """Mirror resolve_category: an empty competitor list is a 404 with a detail
+    message, never a silent 200 + empty list."""
+    with patch(
+        "aeo_engine.main.resolve_brand_competitors",
+        new_callable=AsyncMock,
+    ) as mock:
+        mock.return_value = []
+        res = client.get(
+            "/api/resolve-competitors",
+            params={"brand": "Linear", "category": "project management"},
+        )
+    assert res.status_code == 404
+    assert res.json()["detail"] == "Could not resolve competitors for 'Linear'"
+
+
+def test_resolve_competitors_200_with_competitors() -> None:
+    """A non-empty result still returns 200 with the parsed competitors."""
+    with patch(
+        "aeo_engine.main.resolve_brand_competitors",
+        new_callable=AsyncMock,
+    ) as mock:
+        mock.return_value = [Competitor(name="Jira", reason="a PM rival")]
+        res = client.get(
+            "/api/resolve-competitors",
+            params={"brand": "Linear", "category": "project management"},
+        )
+    assert res.status_code == 200
+    assert res.json()["competitors"] == [{"name": "Jira", "reason": "a PM rival"}]
+
+
+def test_resolve_competitors_400_on_empty_brand() -> None:
+    """An empty brand stays a 400 (mirrors resolve_category)."""
+    res = client.get(
+        "/api/resolve-competitors",
+        params={"brand": "", "category": "project management"},
+    )
+    assert res.status_code == 400
+
+
+def test_resolve_competitors_400_on_empty_category() -> None:
+    """An empty category stays a 400 (mirrors resolve_category)."""
+    res = client.get(
+        "/api/resolve-competitors",
+        params={"brand": "Linear", "category": ""},
+    )
+    assert res.status_code == 400
