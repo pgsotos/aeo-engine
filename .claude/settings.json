@@ -23,16 +23,6 @@
           }
         ]
       }
-    ],
-    "PreCommit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": ".claude/hooks/scripts/conventional-commit.sh"
-          }
-        ]
-      }
     ]
   }
 }

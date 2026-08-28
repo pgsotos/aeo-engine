@@ -71,7 +71,11 @@ Breaking change: add `!` after scope, e.g. `feat(api)!: change response shape`.
 
 - **No AI attribution** (`Co-Authored-By`, "with Claude", etc.) — ever.
 - **Gradual, atomic commits** — never one big commit at the end.
-- The convention-commit hook (`.claude/settings.json`) enforces the format and
-  blocks AI attribution automatically.
+- A `commit-msg` git hook enforces the Conventional Commits format and blocks
+  AI attribution. Enable it once per clone:
+  ```bash
+  git config core.hooksPath .githooks
+  ```
+  Without that, the hook does not run — the format is still required.
 - The old `feature/hito-2-infrastructure-temporal` branch is deprecated and
   should be deleted from remote; the default branch is `main`.

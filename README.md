@@ -91,6 +91,13 @@ to `develop`. When `develop` moves ahead, **rebase** your branch
 (`git rebase origin/develop` + `git push --force-with-lease`) — never merge
 `develop` in. See the `git-flow` skill and ADR-013 / ADR-014.
 
+After cloning, enable the commit-message hook (Conventional Commits + no AI
+attribution):
+
+```bash
+git config core.hooksPath .githooks
+```
+
 ### Secrets
 
 Never commit real credentials. `.env` is git-ignored; only `.env.example`

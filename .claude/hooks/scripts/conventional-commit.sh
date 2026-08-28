@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# conventional-commit: PreCommit hook that validates a git commit message
-# follows Conventional Commits and blocks AI attribution.
+# conventional-commit: validate that a git commit message follows Conventional
+# Commits and carries no AI attribution.
 #
-# Reads from the pre-commit hook (COMMIT_MESSAGE env var or stdin) as
-# supported by Claude Code's PreCommit hook, and git's prepare-commit-msg.
+# Invoked by the git `commit-msg` hook (`.githooks/commit-msg`, enabled with
+# `git config core.hooksPath .githooks`), which passes the message file as $1.
+# Also accepts the message via the COMMIT_MESSAGE env var or stdin.
 
 set -euo pipefail
 
