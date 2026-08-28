@@ -27,6 +27,7 @@ from aeo_engine.database import (
     save_grounding_sources,
     save_metrics,
     save_responses,
+    touch_evaluation_heartbeat,
     update_evaluation,
 )
 from aeo_engine.gemini import (
@@ -399,6 +400,10 @@ async def _sample_and_store_prompt(
         for result in classify_all_brands(resp.raw_text, all_brands):
             result.response_id = resp.id or ""
             results.append(result)
+
+    # Liveness signal: this prompt finished, so the job is alive. A run that
+    # stops touching this is swept to `failed` on the next listing (jobs.py).
+    touch_evaluation_heartbeat(evaluation_id)
     return results
 
 

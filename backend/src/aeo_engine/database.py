@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
+from datetime import UTC, datetime
 from typing import Any, cast
 
 from supabase import Client, create_client
 
 from aeo_engine.config import settings
+from aeo_engine.jobs import stale_running_ids
 from aeo_engine.models import (
     ClassificationResult,
     Evaluation,
@@ -16,6 +19,8 @@ from aeo_engine.models import (
     GroundingSupport,
     MetricSummary,
 )
+
+logger = logging.getLogger(__name__)
 
 _client: Client | None = None
 
@@ -112,6 +117,49 @@ def update_evaluation(evaluation_id: str, updates: Row) -> Row:
     return _first_row(result.data)
 
 
+def touch_evaluation_heartbeat(evaluation_id: str) -> None:
+    """Record that the background job for this evaluation is still alive.
+
+    Called as each prompt completes. Best-effort: a heartbeat that fails to
+    write must never sink the evaluation it is only reporting on — the worst
+    case is that a live job is swept early, which the ten-minute grace period
+    already makes unlikely.
+    """
+    try:
+        client = get_client()
+        client.table("evaluations").update({"heartbeat_at": datetime.now(UTC).isoformat()}).eq(
+            "id", evaluation_id
+        ).execute()
+    except Exception:  # noqa: BLE001 - liveness reporting is never fatal
+        logger.warning("heartbeat failed for evaluation %s", evaluation_id, exc_info=True)
+
+
+def sweep_stale_evaluations(evaluations: list[Row]) -> set[str]:
+    """Mark evaluations whose job died as `failed`; return the ids swept.
+
+    Runs on read rather than on a schedule. Render's free tier idles the
+    service, so a cron would need a process that outlives the very restarts
+    this exists to detect; the listing request is the only moment a stuck row
+    actually matters to anyone.
+
+    Responses are never touched — a dead job's partial output is still the
+    evidence of what the model returned.
+    """
+    stale = stale_running_ids(evaluations, now=datetime.now(UTC))
+    if not stale:
+        return set()
+
+    try:
+        client = get_client()
+        client.table("evaluations").update({"status": "failed"}).in_("id", stale).execute()
+    except Exception:  # noqa: BLE001 - a failed sweep must not break the listing
+        logger.warning("stale sweep failed for %s", stale, exc_info=True)
+        return set()
+
+    logger.info("swept %d stale evaluation(s) to failed: %s", len(stale), stale)
+    return set(stale)
+
+
 def list_evaluations() -> list[Row]:
     """List all evaluations, most recent first, each with the brands it scored.
 
@@ -119,6 +167,9 @@ def list_evaluations() -> list[Row]:
     the metric rows, which carry one entry per brand. Each row gains a
     `competitors` list (the focus brand excluded, alphabetical); an evaluation
     still running has no metrics yet and gets an empty list.
+
+    Evaluations whose background job died are swept to `failed` here, so a
+    listing never shows a run that has been "in progress" for hours.
     """
     client = get_client()
     evaluations = _rows(
@@ -126,6 +177,11 @@ def list_evaluations() -> list[Row]:
     )
     if not evaluations:
         return []
+
+    for evaluation_id in sweep_stale_evaluations(evaluations):
+        for evaluation in evaluations:
+            if evaluation["id"] == evaluation_id:
+                evaluation["status"] = "failed"
 
     metric_rows = _rows(
         client.table("metrics")

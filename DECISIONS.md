@@ -80,6 +80,7 @@ Linear is the brief's configuration, not a constant in the code.
 | [ADR-009](#adr-009--simplified-stack-for-technical-test-scope) | **The pivot** — FastAPI + Gemini + Supabase, replacing the original heavy stack |
 | [ADR-005](#adr-005--immutable-oltp-supabase--postgresql--olap-clickhouse) | Immutable raw responses; the OLAP half superseded |
 | [ADR-017](#adr-017--evaluations-run-in-the-background-sampled-in-parallel) | Background evaluations with parallel sampling |
+| [ADR-027](#adr-027--a-heartbeat-because-status-cannot-tell-dead-from-busy) | A heartbeat — `status` cannot tell a dead job from a busy one |
 | [ADR-016](#adr-016--health-check-served-at-apihealth) | Health check at `/api/health` — content blockers |
 | [ADR-001](#adr-001--single-monorepo) | Single monorepo |
 | [ADR-018](#adr-018--local-stack-runs-on-docker-compose) | `docker compose up` for the local stack |
@@ -1139,6 +1140,88 @@ Before a measurement becomes a decision, the harness must exercise the same code
 path as production — here, `generate_corpus` → `call_gemini` — and a negative
 result needs a positive control proving the instrument can detect the thing at
 all.
+
+---
+
+## ADR-027 — A heartbeat, because `status` cannot tell dead from busy
+
+**Status:** Accepted
+
+**Context:** `_execute_evaluation` runs in-process as a FastAPI background task
+(ADR-017). `status` records what the user asked for, not whether the process
+doing it is alive, so the two are indistinguishable from the outside: a run that
+is working and a run whose worker was restarted mid-flight both read `running`.
+
+This is not hypothetical. One evaluation has been `running` since 11:44 with 64
+of its 160 responses and no metrics — its worker died and nothing noticed. It is
+also the only evaluation in the project carrying grounding evidence (ADR-026),
+which is precisely why it must not be deleted to tidy the list.
+
+Free-tier hosting makes the failure ordinary rather than exceptional: Render
+idles the service, and a deploy restarts it. Any run in flight at that moment is
+orphaned.
+
+**Decision:** Add a liveness signal and sweep on read.
+
+- `evaluations.heartbeat_at` (migration `003_job_heartbeat.sql`), nullable.
+- `_sample_and_store_prompt` touches it as each prompt completes. Best-effort —
+  a failed heartbeat write logs and continues, because a liveness report must
+  never sink the run it is only reporting on.
+- `stale_running_ids` (`jobs.py`) is a pure function: a `running` row silent for
+  more than **10 minutes** is dead. A full evaluation takes ~2 minutes and a
+  single prompt seconds, so the threshold is several times the worst realistic
+  gap.
+- `list_evaluations` applies it, flipping those rows to `failed`.
+
+**Why sweep on read rather than on a schedule.** A cron would need a process
+that outlives the very restarts this exists to detect, and the free tier gives
+no such process. The listing request is also the only moment a stuck row matters
+to anyone — nobody is harmed by a stale row nobody is looking at.
+
+**Three deliberate conservatisms**, because this code marks work as failed:
+
+- **Responses are never deleted.** A dead job's partial output is still evidence
+  of what the model returned; sweeping changes a status, nothing else.
+- **An unparseable timestamp is left alone.** An unreadable date is not evidence
+  of death, and failing on it would kill a live run over a parsing bug.
+- **Only `running` rows are considered.** A finished evaluation is never
+  reopened, however old.
+
+Timestamps are read as UTC when they carry no offset: `GeminiResponse.created_at`
+was written with a naive `utcnow()` while the other models use `datetime.now(UTC)`,
+so both shapes are in the table and comparing them directly would raise. That
+inconsistency is real and worth fixing at the model; normalising on read means
+the sweep does not depend on the fix landing first.
+
+**Consequences:**
+
+- A stuck run now becomes `failed` within ten minutes of anyone looking, instead
+  of never.
+- The transition is one-way and automatic. A genuinely slow run — a model
+  outage stretching a prompt past ten minutes — would be marked failed while
+  still alive. Its responses survive, so the cost is a wrong label, not lost
+  data; if that shows up in practice, the threshold is the dial.
+- Partial completion is **not** attempted. The stuck evaluation holds 8 of 20
+  prompts; computing metrics over an unbalanced corpus would produce a number
+  that looks valid and is not. A wrong number is worse than a missing one.
+
+**Deferred, deliberately — the existing stuck row.** The sweep fixes the
+mechanism, not the history. Marking `f06a2e0d` (Linear, 11:44) as `failed` is a
+one-row production data change, and it is left as a planned manual step rather
+than folded into this change:
+
+```sql
+UPDATE evaluations SET status = 'failed' WHERE id = '<id>' AND status = 'running';
+```
+
+Its 64 responses, 20 grounding sources and 42 supports must be preserved — they
+are the evidence base for ADR-026. Alternatively, leaving it untouched lets the
+new sweep pick it up on the next listing, which also demonstrates the mechanism
+works against a real case.
+
+**Revisit trigger:** a live run swept early (lower the threshold's confidence,
+not the threshold), or moving evaluations out of process — a real queue makes
+the heartbeat redundant and the worker's own liveness authoritative.
 
 ---
 
