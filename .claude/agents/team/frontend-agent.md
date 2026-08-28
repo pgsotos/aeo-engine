@@ -34,7 +34,7 @@ You are the frontend specialist for `aeo-engine`.
 - **Treat every number from the backend as already-computed.** The frontend
   renders metrics, it does not calculate them.
 - **Backend API is the source of truth.** The frontend calls
-  `backend:8000` (configured via `NEXT_PUBLIC_BACKEND_URL` in `.env.local`).
+  `backend:8000` (configured via `NEXT_PUBLIC_API_URL` in `.env.local`).
 - Deployable by pointing Vercel at `frontend/`.
 
 ## Source layout

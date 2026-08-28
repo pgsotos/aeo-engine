@@ -23,7 +23,7 @@ deployment is failing.
 | `GEMINI_API_KEY` | backend | Render dashboard (secret) |
 | `SUPABASE_URL` | backend | Render dashboard (secret) |
 | `SUPABASE_KEY` | backend | Render dashboard (secret) |
-| `NEXT_PUBLIC_BACKEND_URL` | frontend | Vercel env vars |
+| `NEXT_PUBLIC_API_URL` | frontend | Vercel env vars |
 
 Backend `.env.example`:
 ```
@@ -35,7 +35,7 @@ SAMPLING_N=8
 
 Frontend `.env.example`:
 ```
-NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
+NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
 
 ## Render backend
@@ -57,7 +57,7 @@ Smoke-test `GET /health`.
 
 1. Import the repo in Vercel, set Root Directory to `frontend/`.
 2. Framework: Next.js (auto-detected). Build: `bun run build`.
-3. Set `NEXT_PUBLIC_BACKEND_URL` to the Render URL.
+3. Set `NEXT_PUBLIC_API_URL` to the Render URL.
 4. Deploy.
 
 ## Checklist before "it's live"
