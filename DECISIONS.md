@@ -44,6 +44,7 @@ change of direction, not clutter.
 | [ADR-016](#adr-016--health-check-served-at-apihealth) | Health check at `/api/health` — content blockers |
 | [ADR-018](#adr-018--local-stack-runs-on-docker-compose) | `docker compose up` for the local stack |
 | [ADR-019](#adr-019--one-database-for-now-per-environment-databases-deferred) | One database now; per-environment split deferred |
+| [ADR-020](#adr-020--row-level-security-is-off-the-backend-is-the-only-database-client) | RLS off — the backend is the only database client |
 | [ADR-003](#adr-003--faststream--redis-for-inter-service-messaging) · [ADR-004](#adr-004--temporalio-for-sampling-orchestration) | *Superseded by ADR-009* — Redis broker, Temporal orchestration |
 
 **How the work was done** — the agent setup and the rules around it. The brief
@@ -512,6 +513,41 @@ credentials for no benefit a reviewer can see.
 database, so demo data needs occasional manual cleanup and a careless schema
 change is genuinely dangerous. This is accepted knowingly for a solo-developer
 technical test, and is the first thing to fix if the project continues.
+
+---
+
+## ADR-020 — Row Level Security is off; the backend is the only database client
+
+**Status:** Accepted (with a named residual risk)
+
+**Context:** Supabase reports RLS disabled on all six tables as a critical
+advisory: *"anyone with the anon key can read or modify every row."* That
+warning assumes the common Supabase shape, where the browser holds the anon key
+and queries the database directly.
+
+This project is not built that way. The browser talks only to the FastAPI
+backend (`NEXT_PUBLIC_API_URL`); it never imports a Supabase client, and
+`SUPABASE_KEY` appears in no frontend file, no `frontend/.env.example`, and no
+shipped bundle. The key lives only in server-side environment variables — Render
+for production, `backend/.env` locally.
+
+**Decision:** leave RLS off. The trust boundary is the backend, which is the
+only database client and the only holder of the key. Enabling RLS without
+policies would block that client and take the app down; writing correct policies
+is real work, and with a single server-side consumer it would duplicate a
+boundary that already exists.
+
+**Residual risk, stated plainly:** this is one layer, not two. If
+`SUPABASE_KEY` ever leaked — a misconfigured deploy, a log, a paste — there is
+nothing behind it: full read and write on every table. Defence in depth is
+absent by choice, not by oversight.
+
+**What would force a revisit:** the browser querying Supabase directly (Realtime
+subscriptions, direct reads to skip the API), any multi-tenant or per-user data,
+or making the project public with the key in a client bundle. Any of those makes
+RLS mandatory, not optional. The enabling SQL is one `ALTER TABLE … ENABLE ROW
+LEVEL SECURITY` per table, but it must land together with policies — read for
+`anon`, write restricted to the service role — or the application stops working.
 
 ---
 
