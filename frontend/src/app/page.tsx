@@ -41,6 +41,8 @@ const STATUS_COLORS: Record<string, string> = {
 export default function DashboardPage() {
   const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Which list row is showing its competitor set. One at a time.
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
   const [loadingEvals, setLoadingEvals] = useState(true);
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -498,33 +500,84 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {evaluationList.map((ev) => (
-                    <button
-                      key={ev.id}
-                      type="button"
-                      onClick={() => handleSelect(ev.id)}
-                      className={`flex w-full items-center justify-between rounded-lg border px-4 py-3 text-left transition-colors ${
-                        selectedId === ev.id
-                          ? "border-blue-600 bg-blue-900/20"
-                          : "border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/50"
-                      }`}
-                    >
-                      <div>
-                        <span className="font-medium text-zinc-200">
-                          {ev.brand}
-                        </span>
-                        <span className="ml-2 text-sm text-zinc-500">
-                          {ev.category}
-                        </span>
+                  {evaluationList.map((ev) => {
+                    const expanded = expandedId === ev.id;
+                    return (
+                      <div
+                        key={ev.id}
+                        className={`rounded-lg border transition-colors ${
+                          selectedId === ev.id
+                            ? "border-blue-600 bg-blue-900/20"
+                            : expanded
+                              ? "border-zinc-700 bg-zinc-800/40"
+                              : "border-zinc-800 hover:border-zinc-700 hover:bg-zinc-800/50"
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedId(expanded ? null : ev.id)
+                          }
+                          aria-expanded={expanded}
+                          className="flex w-full items-center justify-between px-4 py-3 text-left"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span
+                              aria-hidden
+                              className={`text-zinc-500 transition-transform ${expanded ? "rotate-90" : ""}`}
+                            >
+                              ▸
+                            </span>
+                            <span className="font-medium text-zinc-200">
+                              {ev.brand}
+                            </span>
+                            <span className="text-sm text-zinc-500">
+                              {ev.category}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-3 text-sm">
+                            <span className="text-zinc-500">{ev.date}</span>
+                            <span
+                              className={STATUS_COLORS[ev.status] ?? "text-zinc-400"}
+                            >
+                              {ev.status}
+                            </span>
+                          </div>
+                        </button>
+
+                        {expanded && (
+                          <div className="border-t border-zinc-800 px-4 py-3">
+                            <div className="mb-3 text-sm">
+                              <span className="text-zinc-500">
+                                Scored against:{" "}
+                              </span>
+                              {ev.competitors && ev.competitors.length > 0 ? (
+                                <span className="text-zinc-300">
+                                  {ev.competitors.join(" · ")}
+                                </span>
+                              ) : (
+                                <span className="text-zinc-500">
+                                  {ev.status === "completed"
+                                    ? "no competitors recorded"
+                                    : "not scored yet"}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-4 text-sm text-zinc-500">
+                              <span>N = {ev.sampling_n} per prompt</span>
+                              <button
+                                type="button"
+                                onClick={() => handleSelect(ev.id)}
+                                className="rounded-md bg-zinc-700 px-3 py-1.5 font-medium text-zinc-100 transition-colors hover:bg-zinc-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-400"
+                              >
+                                View results →
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                      <div className="flex items-center gap-3 text-sm">
-                        <span className="text-zinc-500">{ev.date}</span>
-                        <span className={STATUS_COLORS[ev.status] ?? "text-zinc-400"}>
-                          {ev.status}
-                        </span>
-                      </div>
-                    </button>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
