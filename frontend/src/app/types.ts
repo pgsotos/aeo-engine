@@ -9,6 +9,8 @@ export interface Evaluation {
   status: string;
   created_at: string;
   completed_at: string | null;
+  /** Brands scored alongside the focus brand. Empty while a run is in flight. */
+  competitors?: string[];
 }
 
 export interface MetricSummary {

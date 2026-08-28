@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
+from typing import Any, cast
+
 from supabase import Client, create_client
 
 from aeo_engine.config import settings
@@ -63,15 +66,46 @@ def update_evaluation(evaluation_id: str, updates: dict) -> dict:
 
 
 def list_evaluations() -> list[dict]:
-    """List all evaluations, most recent first."""
+    """List all evaluations, most recent first, each with the brands it scored.
+
+    The competitor set is not a column on `evaluations` — it is recovered from
+    the metric rows, which carry one entry per brand. Each row gains a
+    `competitors` list (the focus brand excluded, alphabetical); an evaluation
+    still running has no metrics yet and gets an empty list.
+    """
     client = get_client()
-    result = (
-        client.table("evaluations")
-        .select("*")
-        .order("created_at", desc=True)
-        .execute()
+    # The Supabase client types `.data` as untyped JSON; these are row dicts.
+    evaluations = cast(
+        "list[dict[str, Any]]",
+        (
+            client.table("evaluations")
+            .select("*")
+            .order("created_at", desc=True)
+            .execute()
+        ).data,
     )
-    return result.data
+    if not evaluations:
+        return []
+
+    metric_rows = cast(
+        "list[dict[str, Any]]",
+        (
+            client.table("metrics")
+            .select("evaluation_id,brand")
+            .in_("evaluation_id", [e["id"] for e in evaluations])
+            .execute()
+        ).data,
+    )
+
+    brands_by_evaluation: dict[str, set[str]] = defaultdict(set)
+    for row in metric_rows:
+        brands_by_evaluation[row["evaluation_id"]].add(row["brand"])
+
+    for evaluation in evaluations:
+        scored = brands_by_evaluation.get(evaluation["id"], set())
+        evaluation["competitors"] = sorted(scored - {evaluation["brand"]})
+
+    return evaluations
 
 
 # ── Gemini Responses ────────────────────────────────────────────────────────
