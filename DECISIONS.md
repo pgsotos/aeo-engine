@@ -71,6 +71,7 @@ Linear is the brief's configuration, not a constant in the code.
 | [ADR-011](#adr-011--gemini-36-flash-as-the-measured-engine) | `gemini-3.6-flash` as the measured engine |
 | [ADR-012](#adr-012--generic-aeo-engine-no-hardcoded-brands) | Generic engine — no hardcoded brands |
 | [ADR-025](#adr-025--category-cleaning-heuristic-and-scoped-frontend-test-harness) | Resolver cleaning heuristic, 404 on empty, scoped vitest harness |
+| [ADR-026](#adr-026--gemini-36-flash-grounding-is-unreliable-with-google-search-via-chat) | `gemini-3.6-flash` grounding is unreliable — 0/480 responses had sources |
 
 ### B · Architecture — the stack, and the one abandoned
 
@@ -894,6 +895,54 @@ with Retry, and a single vitest hook test file run via `bun run test`.
 
 ---
 
+## ADR-015 — Source Auditor: grounding attribution as a first-class signal
+
+**Status:** Accepted
+
+**Context:** Gemini's `google_search` grounding tells us WHICH web sources the
+answer engine actually cited when recommending a brand. That is the causal
+half of AEO: not just "did Linear win", but "which domains did the engine
+consult to decide". Grounding is stochastic (observed ~20-30% of calls), the
+`web.uri` is an opaque redirect token, and `web_search_queries` is often
+empty — the only reliable attribution signal is `grounding_chunks[].web.title`.
+
+**Decision (Slice 2 of the strict-AEO change):**
+
+- **Capture** — `grounding_metadata` is stored verbatim per response as a JSONB
+  column on `gemini_responses` (immutability rule applies: raw, unmutated).
+- **Prompt-side** — every one of the 20 corpus prompts ends with the same
+  instruction: *"If you consult sources, cite them with titles and source
+  domains."* The suffix is appended identically to base AND inverted prompts so
+  competitive symmetry is preserved (a pair still differs only in brand order).
+- **Extract** — pure functions in `sources.py` slice the metadata into
+  `grounding_sources` (one per chunk with a web title) and `grounding_supports`
+  (one per support segment with offsets). Chunks without titles and supports
+  without segment offsets are skipped — they carry no attribution signal.
+- **Domains** — the domain is parsed from `web.title` (first domain-like token,
+  lowercase), NOT from `web.uri` (opaque redirect). Unparseable titles yield
+  `""`; such sources persist but are excluded from impact analysis.
+- **Persist** — two new tables `grounding_sources` and `grounding_supports`
+  (additive migration `002_strict_aeo.sql`), supports linked to sources via
+  `chunk_index`. A support whose chunk produced no source row keeps its segment
+  with `source_id = NULL` — offset evidence is never dropped.
+- **Impact (D7)** — `compute_source_impact` is a **pure derived-on-read matrix**
+  (domain × citations × direct_wins × impact_ratio), NOT a table. It correlates
+  cited domains with the focus brand's `Direct Winner` outcomes via an explicit
+  `response_map`, excludes unparseable domains, and sorts by citations then
+  impact ratio. Impact is the product of this Slice's Source Auditor work unit.
+- **Wiring** — `run_evaluation` persists sources/supports per grounded response
+  (skipped when `grounding_metadata` is None). Grounding stays a PASSIVE
+  observation: it never changes prompts per-run and never mutates responses.
+
+**Consequences:** Brand-level DWR gains a causal companion — the Source Impact
+matrix — answering "which sources drive wins and which drain them". Cost: one
+fractional column + two tables (negligible), ~30% of responses have nothing to
+attribute (documented stochasticity, see ASM-003). Impact rows are not yet
+exposed by any API or dashboard endpoint (frontend deferred within this Slice);
+the Source Auditor is the foundational work unit the API surface will build on.
+
+---
+
 ## Section 2 — Assumptions (ASM)
 
 Assumptions are things taken as true without full proof. Each carries a risk if
@@ -963,6 +1012,80 @@ that the runs are effectively i.i.d.
 run-to-run drift within a single evaluation window.
 
 ---
+
+## ASM-003 — Grounding presence and title-based domains are reliable enough
+
+**Status:** Assumed
+
+**Context:** The Source Auditor (ADR-015) attributes the focus brand's wins to
+the web domains Gemini consulted. Two empirical facts underpin it: grounding
+fires only on a subset of calls, and the attribution signal is the chunk's
+`web.title`, because the `web.uri` is an opaque redirect token.
+
+**Assumption:**
+- Grounding presence is stochastic (~20-30% of calls) but stable enough per
+  evaluation that the ground-truth-carrying subset still yields usable source
+  impact matrices once enough runs accumulate. The citation instruction
+  (`CITATION_SUFFIX`) nudges grounding to fire more often, but no rate is
+  guaranteed.
+- A heuristic first-domain-like-token parse of `web.title` reliably identifies
+  the consulted source domain. Titles without a domain-like token yield `""`
+  and are excluded from impact analysis rather than guessed.
+- `grounding_supports[].segment` offsets refer to the response text that was
+  stored verbatim, so segment evidence stays aligned with `raw_text`.
+
+**Consequences and known limits:**
+- Source impact is computed over the grounded subset only; low grounding rates
+  widen the effective confidence interval of any source-level claim.
+- The domain heuristic can pick the wrong token on unusual title formats
+  (e.g. an author's name in `first.last` form) — exclusion-on-failure keeps the
+  matrix honest rather than attributing to a wrong host.
+- Per-run grounding variance is captured by N-run sampling but not isolated
+  from brand/position bias; that isolation is not attempted in this Slice.
+
+**Revisit trigger:** observed grounding rate below ~10% over many evaluations,
+title formats that materially defeat the heuristic, or segment offsets that
+misalign with stored `raw_text`.
+
+> **Review note (ADR-026, 2026-08-28):** the ASM-003 expectation of "~20–30%
+> of calls carrying grounding chunks" was not reproduced on `gemini-3.6-flash`.
+> See [ADR-026](#adr-026--gemini-36-flash-grounding-is-unreliable-with-google-search-via-chat)
+> for the empirical evidence and its consequence for the Source Auditor.
+
+---
+
+## ADR-026 — `gemini-3.6-flash` grounding is unreliable with `google_search` via chat
+
+**Status:** Accepted (documented)
+
+**Context / Decision:** the Source Auditor (ADR-015) and the grounding assumptions
+in ASM-003 rely on the `google_search` grounding tool returning citation chunks
+for a meaningful share of responses. This ADR records the empirical result that,
+against **`gemini-3.6-flash`** served through the `google-genai` chat interface,
+that expectation does not hold: the model returns no usable grounding chunks.
+
+**Observed evidence (2026-08-28):**
+- Three real evaluations on `develop` (Linear, Notion, Airtable; N=8) produced
+  480 persisted responses; **0 / 480** carried a non-null `grounding_metadata`.
+- Direct one-off calls returned `grounding_metadata` that was sometimes `null`
+  and sometimes truthy but with `groundingChunks = 0` — never usable citations.
+- The pipeline configuration is correct: `tools=[google_search]` is attached to
+  the request and `grounding_metadata` is persisted verbatim. This is a model /
+  provider limitation, not a pipeline or persistence bug.
+
+**Consequences:**
+- Source impact (Source Auditor) computes over the grounded subset; with no
+  grounding chunks there is **nothing to attribute**, so source-level impact is
+  effectively zero for `gemini-3.6-flash` today.
+- ADR-015 / ASM-003 remain valid as designed; their ~20–30% expectation does not
+  hold for flash and must not be assumed.
+- The Source Auditor feature ships but has no actionable data until a model /
+  serving mode with reliable grounding is used (candidate: a `Pro` tier or a
+  different API mode that returns grounding chunks).
+
+**Revisit trigger:** re-run the same validation after switching to a model or
+serving configuration that returns `groundingChunks > 0`; then re-baseline the
+grounding-rate expectation for that configuration.
 
 ---
 

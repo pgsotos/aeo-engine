@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -44,6 +45,9 @@ class GeminiResponse(BaseModel):
     run_index: int = Field(ge=1)
     model_id: str
     raw_text: str
+    grounding_metadata: dict[str, Any] | None = (
+        None  # Google Search grounding; None when absent (stochastic)
+    )
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -101,3 +105,35 @@ class Competitor(BaseModel):
 
     name: str
     reason: str
+
+
+class GroundingSource(BaseModel):
+    """A web source cited by Gemini grounding (one per grounding_chunk)."""
+
+    id: str | None = None  # DB row id, set after insert
+    response_id: str = ""  # FK → gemini_responses.id, assigned by the caller
+    web_title: str
+    domain: str  # parsed from web.title (uri is an opaque redirect token); "" when unparseable
+    chunk_index: int = 0  # position in grounding_chunks (linking aid, not a column)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class GroundingSupport(BaseModel):
+    """A response-text segment backed by grounding (one per grounding_support)."""
+
+    id: str | None = None  # DB row id, set after insert
+    response_id: str = ""  # FK → gemini_responses.id, assigned by the caller
+    source_id: str | None = None  # FK → grounding_sources.id, linked at save time
+    source_chunk_index: int | None = None  # first cited chunk (linking aid, not a column)
+    segment_start: int
+    segment_end: int
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class SourceImpactRow(BaseModel):
+    """Derived-on-read impact of a cited domain over the focus brand's DWR."""
+
+    domain: str
+    citations: int  # number of source rows citing this domain
+    direct_wins: int  # responses citing the domain where the focus brand was a Direct Winner
+    impact_ratio: float  # direct_wins / citations

@@ -8,11 +8,14 @@ import type {
   MetricSummary,
   PromptType,
 } from "../types";
+import { interpretEvaluation } from "../lib/interpret";
 import ConfidenceBar from "./ConfidenceBar";
 import DashboardHeader from "./DashboardHeader";
 import DashboardLegend from "./DashboardLegend";
+import ExecutiveSummary from "./ExecutiveSummary";
 import Heatmap from "./Heatmap";
 import ResponseCard from "./ResponseCard";
+import SourceAuditor from "./SourceAuditor";
 
 interface EvaluationDashboardProps {
   dashboard: DashboardData;
@@ -55,6 +58,9 @@ export default function EvaluationDashboard({
     return map;
   }, [classifications]);
 
+  /** Deterministic plain-language reading of the metrics. */
+  const interpretation = useMemo(() => interpretEvaluation(dashboard), [dashboard]);
+
   return (
     <div className="space-y-8">
       <DashboardHeader evaluation={evaluation} onBack={onBack} />
@@ -66,6 +72,11 @@ export default function EvaluationDashboard({
         </div>
       ) : (
         <>
+          <ExecutiveSummary
+            interpretation={interpretation}
+            evaluation={evaluation}
+          />
+
           <section>
             <h2 className="mb-4 text-lg font-semibold text-zinc-200">
               Multi-Dimension Heatmap
@@ -89,20 +100,37 @@ export default function EvaluationDashboard({
             </section>
           )}
 
+          <section>
+            <h2 className="mb-4 text-lg font-semibold text-zinc-200">
+              Source Auditor
+            </h2>
+            <SourceAuditor rows={dashboard.source_impact ?? []} />
+          </section>
+
           {responses.length > 0 && (
             <section>
-              <h2 className="mb-4 text-lg font-semibold text-zinc-200">
-                Individual Responses ({responses.length})
-              </h2>
-              <div className="space-y-3">
-                {responses.map((resp) => (
-                  <ResponseCard
-                    key={resp.id}
-                    response={resp}
-                    classifications={classificationsByResponse.get(resp.id) ?? []}
-                  />
-                ))}
-              </div>
+              <details className="group rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+                <summary className="flex list-none cursor-pointer items-center justify-between text-lg font-semibold text-zinc-200">
+                  <span>
+                    Individual Responses ({responses.length})
+                  </span>
+                  <span className="text-sm font-normal text-zinc-500 group-open:hidden">
+                    Expand to trace each answer
+                  </span>
+                  <span className="text-sm font-normal text-zinc-500 hidden group-open:inline">
+                    Collapse
+                  </span>
+                </summary>
+                <div className="mt-4 space-y-3">
+                  {responses.map((resp) => (
+                    <ResponseCard
+                      key={resp.id}
+                      response={resp}
+                      classifications={classificationsByResponse.get(resp.id) ?? []}
+                    />
+                  ))}
+                </div>
+              </details>
             </section>
           )}
         </>

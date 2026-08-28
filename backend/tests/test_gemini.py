@@ -1,4 +1,10 @@
-"""Tests for the Gemini client (unit tests, no real API calls)."""
+"""Tests for the Gemini client (unit tests, no real API calls).
+
+Grounding behavior (Slice 2): `_sync_call` returns `(raw_text, grounding_metadata)`
+and `call_gemini` surfaces grounding metadata on the response model while keeping
+`raw_text` verbatim. Grounding presence is stochastic in the provider, so both
+with-metadata and without-metadata paths are first-class.
+"""
 
 from unittest.mock import MagicMock, patch
 
@@ -6,12 +12,31 @@ import pytest
 
 from aeo_engine.gemini import _clean_categories, call_gemini
 
+GROUNDING_PAYLOAD = {
+    "grounding_chunks": [
+        {"web": {"uri": "https://redirect.example/x", "title": "Linear - Wikipedia"}},
+        {"web": {"uri": "https://redirect.example/y", "title": "Jira - Atlassian.com"}},
+    ],
+    "grounding_supports": [
+        {"segment": {"start_index": 0, "end_index": 52, "text": "Linear is..."}}
+    ],
+    "web_search_queries": ["best project management tool"],
+}
+
+
+def _mock_grounding_metadata(payload: dict) -> MagicMock:
+    """A candidate.grounding_metadata stand-in whose model_dump yields `payload`."""
+    gm = MagicMock()
+    gm.model_dump.return_value = payload
+    return gm
+
 
 @pytest.mark.asyncio
 async def test_call_gemini_returns_response() -> None:
     """Mock the Gemini API and verify the response shape."""
     mock_response = MagicMock()
     mock_response.text = "Linear is the best project management tool."
+    mock_response.candidates = []  # no candidates → no grounding metadata
 
     with patch("aeo_engine.gemini._get_client") as mock_get:
         mock_chat = MagicMock()
@@ -95,3 +120,66 @@ def test_clean_categories_caps_length() -> None:
     long = "x" * 100
     assert _clean_categories(long) == ["x" * 50]
     assert _clean_categories(long)[0] == "x" * 50
+
+
+@pytest.mark.asyncio
+async def test_call_gemini_surfaces_grounding_metadata() -> None:
+    """When the provider returns grounding metadata, it is serialized onto the
+    response model and raw_text stays verbatim."""
+    text = "Linear is the best project management tool."
+    mock_response = MagicMock()
+    mock_response.text = text
+    mock_response.candidates = [
+        MagicMock(grounding_metadata=_mock_grounding_metadata(GROUNDING_PAYLOAD))
+    ]
+
+    with patch("aeo_engine.gemini._get_client") as mock_get:
+        mock_chat = MagicMock()
+        mock_chat.send_message.return_value = mock_response
+
+        mock_client = MagicMock()
+        mock_client.chats.create.return_value = mock_chat
+        mock_get.return_value = mock_client
+
+        result = await call_gemini(
+            prompt="What is the best PM tool?",
+            evaluation_id="eval-1",
+            prompt_id="direct-01",
+            run_index=1,
+        )
+
+        # Immutability rule: raw text preserved byte-for-byte.
+        assert result.raw_text == text
+        # Grounding metadata surfaced on the public model (plain dict).
+        assert result.grounding_metadata == GROUNDING_PAYLOAD
+        # Google Search grounding is requested on the chat config.
+        config = mock_client.chats.create.call_args.kwargs["config"]
+        assert config.tools[0].google_search is not None
+
+
+@pytest.mark.asyncio
+async def test_call_gemini_grounding_metadata_none_when_absent() -> None:
+    """When the provider returns no grounding, grounding_metadata is None —
+    never a partial or empty object."""
+    text = "Jira is the best project management tool."
+    mock_response = MagicMock()
+    mock_response.text = text
+    mock_response.candidates = []
+
+    with patch("aeo_engine.gemini._get_client") as mock_get:
+        mock_chat = MagicMock()
+        mock_chat.send_message.return_value = mock_response
+
+        mock_client = MagicMock()
+        mock_client.chats.create.return_value = mock_chat
+        mock_get.return_value = mock_client
+
+        result = await call_gemini(
+            prompt="What is the best PM tool?",
+            evaluation_id="eval-1",
+            prompt_id="direct-01",
+            run_index=1,
+        )
+
+        assert result.raw_text == text
+        assert result.grounding_metadata is None
