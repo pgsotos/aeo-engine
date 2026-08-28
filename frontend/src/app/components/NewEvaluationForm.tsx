@@ -10,19 +10,54 @@ interface NewEvaluationFormProps {
   onRun: () => void;
 }
 
+/** One row in the step narrative; its state is derived from hook flags only. */
+interface StepMeta {
+  label: string;
+  state: "complete" | "active" | "pending";
+}
+
+/** Build the 1 Brand → 2 Category → 3 Competitors narrative from existing flags. */
+function buildSteps(form: UseEvaluationForm): StepMeta[] {
+  const brandComplete = form.brand.trim() !== "";
+  const categoryComplete = form.categories.length > 0;
+  const competitorsComplete = form.competitorsResolved;
+
+  return [
+    { label: "Brand", state: brandComplete ? "complete" : "active" },
+    {
+      label: "Category",
+      state: categoryComplete ? "complete" : brandComplete ? "active" : "pending",
+    },
+    {
+      label: "Competitors",
+      state: competitorsComplete ? "complete" : categoryComplete ? "active" : "pending",
+    },
+  ];
+}
+
 /**
  * The three-step evaluation setup: brand, then category, then competitors.
  *
- * Each control is disabled until the step above it resolves, so the sequence
- * is enforced by the form rather than explained in help text. The whole state
- * machine lives in `useEvaluationForm`; this renders it and nothing else.
+ * Each step is resolved by Gemini, so the form explains that inference and asks
+ * the user to verify before running. The narrative and inline errors are derived
+ * entirely from `useEvaluationForm`'s rendered flags — no new state here.
  */
 export default function NewEvaluationForm({
   form,
   running,
   onRun,
 }: NewEvaluationFormProps) {
-  const canRun = form.isReady && !running;
+  const canRun = form.isReady && !running && !form.error;
+  const steps = buildSteps(form);
+
+  // Which step a pending inline error belongs to. A category resolve failure
+  // leaves categories empty; a competitor resolve failure leaves them resolved.
+  const categoryErrorMessage =
+    form.error && form.categories.length === 0 ? form.error : null;
+  const competitorErrorMessage =
+    form.error && form.categories.length > 0 && !form.competitorsResolved
+      ? form.error
+      : null;
 
   function handleBrandKeyDown(e: KeyboardEvent) {
     if (e.key === "Enter") {
@@ -34,6 +69,27 @@ export default function NewEvaluationForm({
   return (
     <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-6">
       <h2 className="mb-4 text-lg font-semibold text-zinc-200">New Evaluation</h2>
+
+      <ol className="mb-5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm" aria-label="Setup steps">
+        {steps.map((step, index) => (
+          <li
+            key={step.label}
+            className={`flex items-center gap-2 ${
+              step.state === "active"
+                ? "font-medium text-zinc-100"
+                : step.state === "complete"
+                  ? "text-zinc-400"
+                  : "text-zinc-600"
+            }`}
+          >
+            {index > 0 && <span className="text-zinc-600">→</span>}
+            <span>
+              <span className="mr-1 text-zinc-600">{index + 1}.</span>
+              {step.label}
+            </span>
+          </li>
+        ))}
+      </ol>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
@@ -64,7 +120,7 @@ export default function NewEvaluationForm({
 
         <div>
           <label htmlFor="category" className="mb-1 block text-sm text-zinc-400">
-            Category
+            Categories for {form.resolvedBrand ?? form.brand}
           </label>
           {form.categories.length > 0 ? (
             <select
@@ -97,13 +153,24 @@ export default function NewEvaluationForm({
               }
             />
           )}
+          {categoryErrorMessage && (
+            <InlineError
+              message={categoryErrorMessage}
+              onRetry={() => void form.resolveCategories()}
+            />
+          )}
         </div>
       </div>
 
       <div className="mt-4">
         <label className="mb-1 block text-sm text-zinc-400">Competitors</label>
-        <CompetitorField form={form} />
+        <CompetitorField form={form} competitorError={competitorErrorMessage} />
       </div>
+
+      <p className="mt-4 max-w-xl text-xs leading-relaxed text-zinc-500">
+        Categories and competitors are inferred by Gemini from your brand. Verify
+        them before running an evaluation — a bad guess would skew the results.
+      </p>
 
       <button
         type="button"
@@ -124,8 +191,39 @@ export default function NewEvaluationForm({
   );
 }
 
+/** An accessible inline step error with an obvious Retry for the failed resolve. */
+function InlineError({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry: () => void;
+}) {
+  return (
+    <div
+      role="alert"
+      className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-red-400"
+    >
+      <span>{message}</span>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="rounded-lg border border-zinc-700 bg-zinc-800 px-2.5 py-1 text-xs font-medium text-zinc-200 transition-colors hover:bg-zinc-700"
+      >
+        Retry
+      </button>
+    </div>
+  );
+}
+
 /** The competitor slot, which is one of four mutually exclusive states. */
-function CompetitorField({ form }: { form: UseEvaluationForm }) {
+function CompetitorField({
+  form,
+  competitorError,
+}: {
+  form: UseEvaluationForm;
+  competitorError: string | null;
+}) {
   if (form.resolvingCompetitors) {
     return (
       <div className="flex items-center gap-2 text-sm text-zinc-500">
@@ -151,13 +249,21 @@ function CompetitorField({ form }: { form: UseEvaluationForm }) {
 
   if (form.category) {
     return (
-      <button
-        type="button"
-        onClick={() => void form.resolveCompetitors()}
-        className="inline-flex items-center justify-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-300 transition-colors hover:bg-zinc-700"
-      >
-        Resolve Competitors
-      </button>
+      <div>
+        <button
+          type="button"
+          onClick={() => void form.resolveCompetitors()}
+          className="inline-flex items-center justify-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-300 transition-colors hover:bg-zinc-700"
+        >
+          Resolve Competitors
+        </button>
+        {competitorError && (
+          <InlineError
+            message={competitorError}
+            onRetry={() => void form.resolveCompetitors()}
+          />
+        )}
+      </div>
     );
   }
 

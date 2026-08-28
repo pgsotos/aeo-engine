@@ -44,13 +44,15 @@ export function useEvaluationForm(): UseEvaluationForm {
   const setBrand = useCallback(
     (value: string) => {
       setBrandState(value);
-      // Typing past the resolved brand invalidates the whole cascade.
+      // Typing past the resolved brand invalidates the whole cascade, and a
+      // stale inline step error for the old brand must not linger.
       if (value !== resolvedBrand) {
         setCategories([]);
         setCategoryState("");
         setCompetitors([]);
         setCompetitorsResolved(false);
         setResolvedBrand(null);
+        setError(null);
       }
     },
     [resolvedBrand],
@@ -60,6 +62,9 @@ export function useEvaluationForm(): UseEvaluationForm {
     setCategoryState(value);
     setCompetitors([]);
     setCompetitorsResolved(false);
+    // A new category invalidates the previous competitors resolve — drop its
+    // stale error too.
+    setError(null);
   }, []);
 
   const resolveCategories = useCallback(async () => {
@@ -93,6 +98,14 @@ export function useEvaluationForm(): UseEvaluationForm {
       setResolvingCompetitors(true);
       setError(null);
       const data = await fetchCompetitors(resolvedBrand, category);
+      if (data.competitors.length === 0) {
+        // Defensive alongside the backend 404: a 200+empty response must never
+        // silently block with Run disabled and no explanation.
+        setCompetitors([]);
+        setCompetitorsResolved(false);
+        setError(`Could not resolve competitors for '${resolvedBrand}'`);
+        return;
+      }
       setCompetitors(data.competitors);
       setCompetitorsResolved(true);
     } catch (e) {

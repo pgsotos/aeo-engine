@@ -38,9 +38,11 @@ export default function DashboardPage() {
     void runner.run(request);
   }, [form, runner]);
 
-  // One error surface, fed by whichever concern failed. Detail first: it is
-  // the most recent thing the user asked for when several can fail at once.
-  const error = detail.error ?? runner.error ?? form.error ?? list.error;
+  // One error surface, fed by whichever non-form concern failed. Detail first:
+  // it is the most recent thing the user asked for when several can fail at
+  // once. Form resolve errors render inline at their step in the form instead
+  // of duplicating here.
+  const error = detail.error ?? runner.error ?? list.error;
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
