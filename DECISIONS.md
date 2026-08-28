@@ -70,6 +70,7 @@ Linear is the brief's configuration, not a constant in the code.
 | [ADR-023](#adr-023--how-the-engine-talks-to-gemini) | Temperature, token budget, and the Chat API |
 | [ADR-011](#adr-011--gemini-36-flash-as-the-measured-engine) | `gemini-3.6-flash` as the measured engine |
 | [ADR-012](#adr-012--generic-aeo-engine-no-hardcoded-brands) | Generic engine — no hardcoded brands |
+| [ADR-028](#adr-028--the-corpus-is-category-neutral-not-just-brand-neutral) | The corpus is category-neutral, not just brand-neutral |
 | [ADR-025](#adr-025--category-cleaning-heuristic-and-scoped-frontend-test-harness) | Resolver cleaning heuristic, 404 on empty, scoped vitest harness |
 | [ADR-026](#adr-026--grounding-works-on-gemini-36-flash-the-first-measurement-was-wrong) | Grounding works (20.8% measured) — the first measurement was wrong |
 
@@ -1140,6 +1141,78 @@ Before a measurement becomes a decision, the harness must exercise the same code
 path as production — here, `generate_corpus` → `call_gemini` — and a negative
 result needs a positive control proving the instrument can detect the thing at
 all.
+
+---
+
+## ADR-028 — The corpus is category-neutral, not just brand-neutral
+
+**Status:** Accepted — corrects a gap in ADR-012 and revises the templates in
+ADR-024. The prompt count, the type split and the inverted pairing are
+unchanged.
+
+**Context:** ADR-012 says nothing is hardcoded to a brand, and that was true:
+`generate_corpus` interpolates `{brand}`, `{category}` and `{brand_list}`
+everywhere. But genericity in the *brand* is not genericity in the *category*,
+and every one of the five types assumed the thing being measured was B2B
+software bought by a team:
+
+| Type | The assumption it carried |
+|---|---|
+| `direct` | "best {category} **tool**", "**platform** for your **team**" |
+| `comparative` | "better for a **growing team**" |
+| `use_case` | "startup of 10 **engineers**", "25 **developers** … **sprint planning and bug tracking**" |
+| `feature` | "**developer experience** and **keyboard-driven workflow**" |
+| `negative` | "a better choice for my **team**" |
+
+For an airline, a beer or a supermarket those questions measure nothing. The
+evidence is in the engine's own output: a stored SKY Airline evaluation shows
+Gemini searching **"LATAM Airlines sprint planning bug tracking"** — the model
+faithfully answering a question that made no sense for the category. Two of the
+five dimensions were producing numbers that looked valid and were not.
+
+This was found through `web_search_queries`, which only became visible when the
+Source Auditor work started surfacing them.
+
+**Decision:** Rewrite every template in category-neutral language. No "tool",
+"platform", "team", "engineer", "developer", "sprint", "keyboard" or
+"integration" survives. A test asserts the absence of that vocabulary across
+four non-software categories, so the property is enforced rather than intended.
+
+Two dimensions needed an actual replacement rather than a word swap:
+
+- **`use_case` needs a situation.** The only situations that transfer across
+  every category are the buyer's: choosing for the first time, and choosing on
+  price.
+- **`feature` needs an attribute.** Quality and reliability are the two every
+  category can answer. Anything sharper — latency, horsepower, alcohol content —
+  would have to vary per category and break the fixed corpus.
+
+**The corpus also became deterministic.** `negative` shuffled its competitor
+list with `random.shuffle`, so two calls produced different prompts. ADR-024
+calls the corpus "the instrument" and offers `GET /api/prompts` to inspect it;
+both claims were false while the instrument changed between readings. The
+second ordering is now `reversed(competitors)` — still a different ordering,
+now a reproducible one.
+
+**Consequences:**
+
+- The same twenty questions mean something for any category, so `use_case` and
+  `feature` scores are comparable across a beer, an airline and a SaaS product.
+- **The cost, stated plainly: the questions are blunter.** A software-specific
+  feature prompt probed something real about software. "Highest quality" probes
+  less, in exchange for probing it everywhere. For a single-category deployment,
+  sharper category-specific templates would measure more — and would need a new
+  ADR, because they change what the number means.
+- **Results from before this change are not comparable with results after it**
+  for `use_case` and `feature`. The stored evaluations keep their numbers; those
+  numbers answer different questions. `direct`, `comparative` and `negative`
+  changed only in wording.
+- `random` is no longer imported by `prompts.py`.
+
+**Revisit trigger:** a category where "value for money" or "reliability" is
+meaningless (a free product, a monopoly), or a decision to specialise the engine
+to one vertical — at which point category-specific templates stop being a
+liability and become the point.
 
 ---
 

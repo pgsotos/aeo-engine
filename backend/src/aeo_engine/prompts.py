@@ -13,8 +13,6 @@ Prompt types:
 
 from __future__ import annotations
 
-import random
-
 from aeo_engine.models import PromptRecord, PromptType
 
 CITATION_SUFFIX = " If you consult sources, cite them with titles and source domains."
@@ -43,15 +41,16 @@ def generate_corpus(
 
     # ── Direct prompts ──────────────────────────────────────────────────
 
+    # Every template below is category-neutral on purpose: no "tool",
+    # "platform", "team" or any other word that presumes the category is
+    # software bought by a company. The same twenty questions have to mean
+    # something for a beer, an airline and a supermarket (ADR-028).
     direct_templates = [
         (
-            "What is the best {category} tool in 2025? "
+            "What is the best {category} in 2025? "
             "Consider {brand_list}. Recommend the top one and explain why."
         ),
-        (
-            "If you could only pick one {category} platform "
-            "for your team, which would it be among {brand_list}?"
-        ),
+        ("If you could only pick one option for {category}, which would it be among {brand_list}?"),
     ]
 
     for i, template in enumerate(direct_templates, 1):
@@ -76,7 +75,7 @@ def generate_corpus(
     # ── Comparative prompts ─────────────────────────────────────────────
 
     comparative_templates = [
-        ("{brand} vs {competitor}: which one is better for a growing team and why?"),
+        ("{brand} vs {competitor}: which one is better, and why?"),
         (
             "I'm choosing between {brand} and {competitor} for {category}. "
             "Which should I pick and what are the key differences?"
@@ -103,15 +102,18 @@ def generate_corpus(
 
     # ── Use-case prompts ────────────────────────────────────────────────
 
+    # The use-case dimension needs a *situation*, and the only situations that
+    # transfer across every category are the buyer's: choosing for the first
+    # time, and choosing on price. Sharper, domain-specific scenarios would
+    # measure more per category but stop being comparable between them.
     use_case_templates = [
         (
-            "What's the best {category} tool for a startup "
-            "of 10 engineers that moves fast and values simplicity?"
+            "I'm choosing {category} for the first time and don't know "
+            "the market. Which of {brand_list} would you recommend, and why?"
         ),
         (
-            "We're a remote team of 25 developers. We need something "
-            "for sprint planning and bug tracking. What do you recommend "
-            "from {brand_list}?"
+            "I want the best value for money in {category}. "
+            "Which would you recommend from {brand_list}?"
         ),
     ]
 
@@ -136,14 +138,18 @@ def generate_corpus(
 
     # ── Feature prompts ─────────────────────────────────────────────────
 
+    # The feature dimension needs an *attribute*. Quality and reliability are
+    # the two that every category has an answer for; anything more specific
+    # (latency, horsepower, alcohol content) would have to vary per category
+    # and break the fixed corpus.
     feature_templates = [
         (
-            "Which {category} tool has the best developer experience "
-            "and keyboard-driven workflow? Compare {brand_list}."
+            "Which of {brand_list} is the highest quality in {category}, "
+            "and what makes it stand out?"
         ),
         (
-            "I need a fast, minimal {category} tool with good "
-            "integration. Which is best: {brand_list}?"
+            "Which {category} option is the most reliable: {brand_list}? "
+            "Explain what separates them."
         ),
     ]
 
@@ -170,21 +176,22 @@ def generate_corpus(
 
     negative_templates = [
         (
-            "What are the reasons NOT to use {brand} for {category}? "
+            "What are the reasons NOT to choose {brand} for {category}? "
             "What are its weaknesses compared to {competitor_list}?"
         ),
         (
-            "I've heard {brand} is overhyped. Convince me that "
-            "{competitor_list} would be a better choice for my team."
+            "I've heard {brand} is overrated. Convince me that "
+            "{competitor_list} would be a better choice."
         ),
     ]
 
     for i, template in enumerate(negative_templates, 1):
         competitor_list = ", ".join(competitors)
-        # For the second prompt, shuffle competitor order for variety
-        shuffled = competitors.copy()
-        random.shuffle(shuffled)
-        shuffled_list = ", ".join(shuffled)
+        # A second, different ordering for variety — reversed, not shuffled.
+        # random.shuffle made the corpus differ between calls, so two
+        # evaluations of the same brand were not sampling the same instrument
+        # and `GET /api/prompts` did not describe what had actually been sent.
+        shuffled_list = ", ".join(reversed(competitors))
         corpus.append(
             PromptRecord(
                 id=_id("neg", i),
