@@ -61,9 +61,10 @@ que los datos se lean como una conclusión y no como un volcado de log:
   rastreabilidad.
 - **Source Auditor** — qué dominios citados aparecen en las respuestas y cómo
   cada uno co-ocurre con que la marca foco sea ganadora directa. Depende del
-  metadata de grounding de `google_search`; ver **ADR-026** para la advertencia
-  actual de que `gemini-3.6-flash` rara vez devuelve chunks de grounding
-  utilizables hoy.
+  metadata de grounding de `google_search`, que un A/B controlado midió en el
+  **20.8%** de las llamadas. Ver **ADR-026**: una versión anterior concluía lo
+  contrario, a partir de una medición tomada antes de que el código de captura
+  llegara a producción.
 
 ## Estructura del repositorio
 
