@@ -410,7 +410,16 @@ async def _execute_evaluation(
                 classifications_by_type[prompt.prompt_type].append(result)
 
         if not all_classifications:
-            raise RuntimeError("every prompt failed")
+            # Surface why, not just that it failed — the usual cause is a bad
+            # GEMINI_API_KEY, and the first prompt's error says so exactly.
+            first_error = next(
+                (r for r in per_prompt if isinstance(r, BaseException)), None
+            )
+            raise RuntimeError(
+                f"every prompt failed; first error: {first_error!r}"
+                if first_error
+                else "every prompt failed"
+            )
 
         save_classifications(all_classifications)
         metrics = compute_per_type_metrics(
