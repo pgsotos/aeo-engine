@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
 
-class PromptType(str, Enum):
+class PromptType(StrEnum):
     """Multi-dimension prompt classification."""
 
     DIRECT = "direct"
@@ -18,7 +18,7 @@ class PromptType(str, Enum):
     NEGATIVE = "negative"
 
 
-class Classification(str, Enum):
+class Classification(StrEnum):
     """How a brand appears in a Gemini response."""
 
     DIRECT_WINNER = "direct_winner"
