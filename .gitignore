@@ -24,6 +24,9 @@ dist/
 build/
 *.tsbuildinfo
 
+# Generated from the running app (scripts/export_openapi.py)
+backend/openapi.json
+
 # Data
 *.log
 
