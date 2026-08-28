@@ -49,6 +49,10 @@ export function useBackendHealth(): BackendHealth {
   }, []);
 
   useEffect(() => {
+    // `check` only calls setState after an awaited fetch (or in its catch),
+    // never synchronously during render, so the cascading-render concern the
+    // rule guards against does not apply here.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void check();
     intervalRef.current = setInterval(() => {
       void check();
