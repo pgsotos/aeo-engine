@@ -137,3 +137,10 @@ class SourceImpactRow(BaseModel):
     citations: int  # number of source rows citing this domain
     direct_wins: int  # responses citing the domain where the focus brand was a Direct Winner
     impact_ratio: float  # direct_wins / citations
+
+
+class SearchQueryRow(BaseModel):
+    """A search query the model ran, and how often across an evaluation."""
+
+    query: str
+    count: int

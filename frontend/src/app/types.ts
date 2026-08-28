@@ -59,12 +59,18 @@ export interface SourceImpactRow {
   impact_ratio: number;
 }
 
+export interface SearchQueryRow {
+  query: string;
+  count: number;
+}
+
 export interface DashboardData {
   evaluation: Evaluation;
   metrics: MetricSummary[];
   responses: GeminiResponse[];
   classifications: ClassificationResult[];
   source_impact?: SourceImpactRow[];
+  search_queries?: SearchQueryRow[];
 }
 
 export interface EvaluateRequest {

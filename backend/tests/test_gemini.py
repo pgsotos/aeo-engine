@@ -183,3 +183,47 @@ async def test_call_gemini_grounding_metadata_none_when_absent() -> None:
 
         assert result.raw_text == text
         assert result.grounding_metadata is None
+
+
+# ── Client caching ──────────────────────────────────────────────────────────
+#
+# `_get_client` used to build a fresh `genai.Client` on every call, from inside
+# `_sync_call` — 160 clients per evaluation at 20 prompts x N=8, each carrying
+# its own HTTP connection pool. Measured at ~117 KB apiece before counting
+# socket buffers, on a 512 MB instance. `database.get_client` was already a
+# singleton; this brings the two in line.
+
+
+def test_client_is_cached_across_calls(monkeypatch) -> None:
+    import aeo_engine.gemini as gemini_module
+
+    monkeypatch.setattr(gemini_module, "_client", None)
+    monkeypatch.setattr(gemini_module.settings, "gemini_api_key", "test-key")
+
+    built = []
+
+    class FakeClient:
+        def __init__(self, **kwargs: object) -> None:
+            built.append(kwargs)
+
+    monkeypatch.setattr(gemini_module.genai, "Client", FakeClient)
+
+    first = gemini_module._get_client()
+    second = gemini_module._get_client()
+
+    assert first is second
+    assert len(built) == 1, "a second client was constructed"
+
+
+def test_missing_key_still_raises_and_caches_nothing(monkeypatch) -> None:
+    """The setup error must survive caching — an absent key cannot be memoised
+    into a client, and a later call with a key configured must still work."""
+    import aeo_engine.gemini as gemini_module
+
+    monkeypatch.setattr(gemini_module, "_client", None)
+    monkeypatch.setattr(gemini_module.settings, "gemini_api_key", "")
+
+    with pytest.raises(RuntimeError, match="GEMINI_API_KEY"):
+        gemini_module._get_client()
+
+    assert gemini_module._client is None

@@ -45,7 +45,12 @@ from aeo_engine.models import (
     PromptType,
 )
 from aeo_engine.prompts import generate_corpus, get_corpus_by_type
-from aeo_engine.sources import compute_source_impact, extract_sources, extract_supports
+from aeo_engine.sources import (
+    aggregate_search_queries,
+    compute_source_impact,
+    extract_sources,
+    extract_supports,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -303,13 +308,26 @@ async def get_evaluation_detail(evaluation_id: str) -> dict[str, Any]:
         if c["brand"] == evaluation["brand"]
     ]
     impact_rows = compute_source_impact(sources, focus_classifications, response_map)
+    search_queries = aggregate_search_queries([r.get("grounding_metadata") for r in responses])
+
+    # The raw grounding payload does not travel. It averaged 7.1 KB per
+    # response against 0.6 KB of answer text — 220 KB of a 524 KB payload —
+    # and two thirds of it is `search_entry_point`, rendered HTML for a Google
+    # search chip nothing here displays. Everything the dashboard uses is
+    # already projected: cited domains into `source_impact`, the searches
+    # themselves into `search_queries`. The full payload stays in the database,
+    # so nothing is lost for later analysis.
+    trimmed_responses = [
+        {k: v for k, v in response.items() if k != "grounding_metadata"} for response in responses
+    ]
 
     return {
         "evaluation": evaluation,
         "metrics": metrics,
-        "responses": responses,
+        "responses": trimmed_responses,
         "classifications": classifications,
         "source_impact": [row.model_dump(mode="json") for row in impact_rows],
+        "search_queries": [row.model_dump(mode="json") for row in search_queries],
     }
 
 
