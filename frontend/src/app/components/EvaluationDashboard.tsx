@@ -13,6 +13,7 @@ import DashboardHeader from "./DashboardHeader";
 import DashboardLegend from "./DashboardLegend";
 import Heatmap from "./Heatmap";
 import ResponseCard from "./ResponseCard";
+import SourceAuditor from "./SourceAuditor";
 
 interface EvaluationDashboardProps {
   dashboard: DashboardData;
@@ -88,6 +89,13 @@ export default function EvaluationDashboard({
               </div>
             </section>
           )}
+
+          <section>
+            <h2 className="mb-4 text-lg font-semibold text-zinc-200">
+              Source Auditor
+            </h2>
+            <SourceAuditor rows={dashboard.source_impact ?? []} />
+          </section>
 
           {responses.length > 0 && (
             <section>
