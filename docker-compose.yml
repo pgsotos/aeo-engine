@@ -1,0 +1,38 @@
+# aeo-engine — run the whole stack locally with one command.
+#
+#   1. cd backend && cp .env.example .env   # fill in GEMINI_API_KEY, SUPABASE_URL, SUPABASE_KEY
+#   2. docker compose up --build
+#      frontend -> http://localhost:3000
+#      backend  -> http://localhost:8000   (OpenAPI docs at /docs)
+#
+# The database is hosted Supabase — there is no local Postgres container.
+
+name: aeo-engine
+
+services:
+  backend:
+    build: ./backend
+    container_name: aeo-backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Browser-facing URL of the backend, inlined into the Next.js build.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    container_name: aeo-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
