@@ -1,8 +1,12 @@
 import type { NextConfig } from "next";
 
+// The Docker build sets BUILD_STANDALONE=1 to emit a self-contained server
+// bundle. Vercel does its own output tracing and fails on `output: standalone`,
+// so it must stay off there.
 const nextConfig: NextConfig = {
-  // Emit a self-contained server bundle for a slim Docker runtime image.
-  output: "standalone",
+  ...(process.env.BUILD_STANDALONE === "1"
+    ? { output: "standalone" as const }
+    : {}),
 };
 
 export default nextConfig;
