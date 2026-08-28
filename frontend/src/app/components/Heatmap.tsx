@@ -81,6 +81,12 @@ export default function Heatmap({ metrics }: HeatmapProps) {
                       <div className="mt-0.5 text-xs opacity-70">
                         CI: {ciLow}%–{ciHigh}%
                       </div>
+                      <div className="mt-0.5 text-[10px] opacity-60">
+                        SoV:{" "}
+                        {cell.share_of_voice == null
+                          ? "—"
+                          : `${(cell.share_of_voice * 100).toFixed(1)}%`}
+                      </div>
                       <div className="mt-1.5 mx-auto h-1 w-full max-w-[80px] overflow-hidden rounded-full bg-zinc-800">
                         <div
                           className={`h-full rounded-full ${winRateBgBar(cell.win_rate)}`}

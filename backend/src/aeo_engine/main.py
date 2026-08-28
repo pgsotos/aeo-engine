@@ -32,7 +32,7 @@ from aeo_engine.gemini import (
     resolve_brand_competitors,
     run_parallel_sampling,
 )
-from aeo_engine.metrics import compute_per_type_metrics
+from aeo_engine.metrics import compute_consistency, compute_per_type_metrics
 from aeo_engine.models import (
     ClassificationResult,
     Competitor,
@@ -426,6 +426,14 @@ async def _execute_evaluation(
             classifications_by_type, evaluation_id, all_brands
         )
         save_metrics(metrics)
+
+        # Brand-level consistency over the focus brand's per-type DWR
+        win_rates = [m.win_rate for m in metrics if m.brand == all_brands[0]]
+        consistency = compute_consistency(win_rates)
+        if consistency is not None:
+            update_evaluation(evaluation_id, {"consistency": consistency})
+
+        # Mark evaluation as completed
         update_evaluation(
             evaluation_id,
             {
