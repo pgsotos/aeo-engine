@@ -12,8 +12,11 @@ Optimization (AEO), no visibilidad web amplia (GEO).
 | **API** | <https://aeo-engine-35ii.onrender.com> · [documentación OpenAPI](https://aeo-engine-35ii.onrender.com/docs) |
 
 El botón **Start here** del dashboard abre la evaluación terminada más reciente,
-así que hay resultados reales para leer sin ejecutar nada. Hay diecinueve
-evaluaciones almacenadas sobre quince marcas y nueve categorías.
+así que hay resultados reales para leer sin ejecutar nada. La base de
+producción guarda **24 evaluaciones sobre 18 marcas y 21 categorías** — incluye
+marcas no relacionadas con la tecnología (por ejemplo Tesla/vehículos
+eléctricos, Duolingo, Figma, Shopify), lo que ejercita el diseño genérico del
+motor.
 
 ## Qué mide
 
@@ -45,6 +48,23 @@ El texto crudo de Gemini se guarda literal y nunca se modifica; cada métrica es
 una función pura sobre él, así que cualquier número en pantalla puede rastrearse
 hasta la respuesta que lo produjo.
 
+### El detalle de la evaluación, hecho legible
+
+Sobre las respuestas crudas, el detalle de cada evaluación agrega dos capas para
+que los datos se lean como una conclusión y no como un volcado de log:
+
+- **Executive Summary** — una interpretación determinista de las métricas:
+  veredicto (ganadora / en disputa / relegada), chips de KPI (win rate con su
+  intervalo de Wilson), fortalezas y debilidades de la marca foco según los
+  cinco tipos de prompt, y quién está por delante de ella. Es una función pura
+  sobre el mismo código de métricas — sin un resumidor LLM que rompa la
+  rastreabilidad.
+- **Source Auditor** — qué dominios citados aparecen en las respuestas y cómo
+  cada uno co-ocurre con que la marca foco sea ganadora directa. Depende del
+  metadata de grounding de `google_search`; ver **ADR-026** para la advertencia
+  actual de que `gemini-3.6-flash` rara vez devuelve chunks de grounding
+  utilizables hoy.
+
 ## Estructura del repositorio
 
 ```
@@ -75,7 +95,7 @@ aeo-engine/
 ## Ejecutarlo localmente
 
 > **No hace falta ejecutar nada para ver los resultados.** El dashboard
-> desplegado ya tiene diecinueve evaluaciones terminadas. Ejecutarlo en local
+> desplegado ya tiene 24 evaluaciones terminadas. Ejecutarlo en local
 > sirve para leer el código con la aplicación delante, o para evaluar tu propia
 > marca.
 
