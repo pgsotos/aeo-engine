@@ -89,15 +89,6 @@ export default function DashboardPage() {
         const data = await fetchEvaluations();
         if (cancelled) return;
         setEvaluations(data);
-        // Land the reviewer straight on a result: `/api/evaluations` is
-        // ordered most-recent-first, so the first completed row is the
-        // freshest finished evaluation. The form stays one click away
-        // behind "← Back to list".
-        const latestCompleted = data.find((ev) => ev.status === "completed");
-        if (latestCompleted) {
-          setSelectedId(latestCompleted.id);
-          void loadDetail(latestCompleted.id);
-        }
       } catch (e) {
         if (!cancelled)
           setError(e instanceof Error ? e.message : "Failed to load evaluations");
@@ -109,7 +100,7 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [loadDetail]);
+  }, []);
 
   const handleSelect = useCallback(
     (id: string) => {
@@ -289,6 +280,14 @@ export default function DashboardPage() {
     }));
   }, [evaluations]);
 
+  // The list arrives most-recent-first, so the first finished run is the
+  // freshest one — offered up front so a first-time visitor can see real
+  // results without waiting for an evaluation to run.
+  const latestCompleted = useMemo(
+    () => evaluations.find((ev) => ev.status === "completed") ?? null,
+    [evaluations],
+  );
+
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
       <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
@@ -313,6 +312,26 @@ export default function DashboardPage() {
         {/* Evaluation selector + form */}
         {!dashboard && (
           <div className="space-y-6">
+            {/* Start here: open a finished evaluation without waiting for a run */}
+            {latestCompleted && (
+              <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-emerald-800/40 bg-emerald-900/15 px-5 py-4">
+                <div className="text-sm text-zinc-300">
+                  <span className="font-medium text-emerald-300">
+                    Start here.
+                  </span>{" "}
+                  A finished evaluation is ready to explore — no need to run one
+                  first. Running a new one takes about two minutes.
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleSelect(latestCompleted.id)}
+                  className="shrink-0 rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400"
+                >
+                  View {latestCompleted.brand} results →
+                </button>
+              </div>
+            )}
+
             {/* New evaluation form */}
             <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-6">
               <h2 className="mb-4 text-lg font-semibold text-zinc-200">
