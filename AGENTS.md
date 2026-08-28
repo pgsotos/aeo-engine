@@ -26,15 +26,21 @@ Every model answer about a brand is classified into exactly one bucket:
 Primary metric: **Direct Answer Win Rate** with a Wilson score confidence
 interval over N independent runs.
 
-### Current status (as of 2026-08-27)
+### Current status (as of 2026-08-28)
+
+Deployed and running — dashboard at <https://aeo-engine-pgsotos.vercel.app>,
+API at <https://aeo-engine-35ii.onrender.com> (`/docs` for OpenAPI).
 
 | Component | Status |
 |---|---|
-| Backend (FastAPI + Gemini) | ✅ Working, tested |
-| Supabase schema | ✅ 4 tables created (`evaluations`, `gemini_responses`, `classifications`, `metrics`) |
-| Gemini connection | ✅ Verified with live API (`gemini-3.6-flash`) |
-| Frontend dashboard | 🔲 In progress (components built, wiring partial) |
-| Deployment | 🔲 Pending (Render config ready, Vercel pending) |
+| Backend (FastAPI + Gemini) | ✅ Deployed on Render, 12 tests passing |
+| Supabase schema | ✅ 4 tables (`evaluations`, `gemini_responses`, `classifications`, `metrics`) |
+| Gemini connection | ✅ Live (`gemini-3.6-flash`) |
+| Frontend dashboard | ✅ Deployed on Vercel — heatmap, confidence bars, response drill-down |
+| Deployment | ✅ Autodeploy from `main`: Render (API) + Vercel (dashboard) |
+| Local run | ✅ `docker compose up` |
+
+17 evaluations across 15 brands and 9 categories are stored.
 
 ### Git Flow
 
