@@ -16,7 +16,44 @@ it is mandatory whenever any of the following changes:
 Every entry has Status, Context, Decision/Assumption/Exclusion, and
 Consequences. Newest last within each section. When an assumption is validated
 or invalidated, or an excluded item is brought back in, add a new entry rather
-than editing history.
+than editing history — the superseded entries below are the record of a real
+change of direction, not clutter.
+
+## Index
+
+**What the product is and how it measures** — the analytical core.
+
+| | |
+|---|---|
+| [ADR-002](#adr-002--aeo-focus-not-geo) | AEO, not GEO — direct-answer win rate against the whole category |
+| [ADR-006](#adr-006--n-run-sampling-with-confidence-intervals) | N independent samples per prompt with a Wilson score interval |
+| [ADR-010](#adr-010--multi-dimension-prompt-analysis) | Five prompt types in inverted pairs, scored separately |
+| [ADR-011](#adr-011--gemini-36-flash-as-the-measured-engine) | `gemini-3.6-flash` as the measured engine |
+| [ADR-012](#adr-012--generic-aeo-engine-no-hardcoded-brands) | Generic engine — no hardcoded brands |
+| [ASM-001](#asm-001--project-category-brands) · [ASM-002](#asm-002--llm-output-variance-is-bounded-and-estimable) | What the brand set and the variance model assume |
+| [OOS-001](#oos-001--product-scope-dropped-for-time) … [OOS-004](#oos-004--local-infrastructure-clickhouse-temporal-redis) | What was deliberately left out |
+
+**Architecture** — the stack, and the one that was abandoned.
+
+| | |
+|---|---|
+| [ADR-009](#adr-009--simplified-stack-for-technical-test-scope) | **The pivot.** FastAPI + Gemini + Supabase, replacing the original heavy stack |
+| [ADR-001](#adr-001--single-monorepo) | Single monorepo |
+| [ADR-005](#adr-005--immutable-oltp-supabase--postgresql--olap-clickhouse) | Immutable raw responses; the OLAP half superseded |
+| [ADR-017](#adr-017--evaluations-run-in-the-background-sampled-in-parallel) | Background evaluations with parallel sampling |
+| [ADR-016](#adr-016--health-check-served-at-apihealth) | Health check at `/api/health` — content blockers |
+| [ADR-018](#adr-018--local-stack-runs-on-docker-compose) | `docker compose up` for the local stack |
+| [ADR-019](#adr-019--one-database-for-now-per-environment-databases-deferred) | One database now; per-environment split deferred |
+| [ADR-003](#adr-003--faststream--redis-for-inter-service-messaging) · [ADR-004](#adr-004--temporalio-for-sampling-orchestration) | *Superseded by ADR-009* — Redis broker, Temporal orchestration |
+
+**How the work was done** — the agent setup and the rules around it. The brief
+asks for this to be committed; these entries explain why each piece exists.
+
+| | |
+|---|---|
+| [ADR-008](#adr-008--strict-branch-and-pr-governance) · [ADR-013](#adr-013--git-flow-branching-main--develop--feature) · [ADR-014](#adr-014--feature-branches-rebase-never-merge) | Branch model, merge gate, rebase over merge |
+| [ADR-015](#adr-015--secret-scanning-and-gitignore-hygiene) | Secret scanning and `.gitignore` hygiene |
+| [ADR-007](#adr-007--deferred-scope-accepted-risk) | Scope deferred under deadline, with the risk named |
 
 ---
 
