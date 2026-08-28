@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# commit-msg hook: validate the commit message.
+#
+# Enable once per clone:
+#   git config core.hooksPath .githooks
+#
+# Delegates to the shared validator, which checks Conventional Commits format
+# and blocks AI attribution. $1 is the path to the commit message file.
+exec "$(dirname "$0")/../.claude/hooks/scripts/conventional-commit.sh" "$1"
