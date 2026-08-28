@@ -82,6 +82,7 @@ Linear is the brief's configuration, not a constant in the code.
 | [ADR-005](#adr-005--immutable-oltp-supabase--postgresql--olap-clickhouse) | Immutable raw responses; the OLAP half superseded |
 | [ADR-017](#adr-017--evaluations-run-in-the-background-sampled-in-parallel) | Background evaluations with parallel sampling |
 | [ADR-027](#adr-027--a-heartbeat-because-status-cannot-tell-dead-from-busy) | A heartbeat — `status` cannot tell a dead job from a busy one |
+| [ADR-029](#adr-029--evaluations-are-not-resumable-partial-runs-are-recorded-as-debt) | Evaluations are not resumable — partial runs recorded as debt |
 | [ADR-016](#adr-016--health-check-served-at-apihealth) | Health check at `/api/health` — content blockers |
 | [ADR-001](#adr-001--single-monorepo) | Single monorepo |
 | [ADR-018](#adr-018--local-stack-runs-on-docker-compose) | `docker compose up` for the local stack |
@@ -99,6 +100,7 @@ piece exists.
 | [ADR-013](#adr-013--git-flow-branching-main--develop--feature) · [ADR-014](#adr-014--feature-branches-rebase-never-merge) | Branch model; rebase over merge on feature branches |
 | [ADR-021](#adr-021--branch-protection-enforces-the-branch-model) | Branch protection makes that model enforced, not aspirational |
 | [ADR-015](#adr-015--secret-scanning-and-gitignore-hygiene) | Secret scanning and `.gitignore` hygiene |
+| [ADR-030](#adr-030--the-codex-harness-config-is-removed-not-fixed) | The Codex harness config is removed, not fixed |
 | [ADR-007](#adr-007--deferred-scope-accepted-risk) | Scope deferred under deadline, with the risk named |
 | [ADR-008](#adr-008--strict-branch-and-pr-governance) | *Superseded by ADR-013 + ADR-021* — the original human-gate governance |
 
@@ -778,6 +780,57 @@ dashboard.
 
 ---
 
+## ADR-030 — The Codex harness config is removed, not fixed
+
+**Status:** Accepted — removes `.codex/`, committed under ADR-008-era tooling.
+
+**Context:** The brief asks for the agent scaffolding to be committed, so
+`.codex/` was added: a mirror of the Claude hooks for a second harness. It was
+committed once (`dd79b66`) and never touched again. Reviewing it before the
+final delivery turned up three facts:
+
+- **The three scripts are byte-identical** to `.claude/hooks/scripts/`. Nothing
+  was adapted; they were copied.
+- **`.codex/hooks.json` hardcodes absolute paths** into the author's home
+  directory (`/Users/…/aeo-engine/.codex/hooks/scripts/owner-guard.sh`), where
+  `.claude/settings.json` uses repository-relative ones. The Codex config
+  therefore **cannot work on any machine but the one that wrote it** — a
+  reviewer cloning the repository gets hooks pointing at a path that does not
+  exist.
+- The work was done with Claude Code; the Codex harness was never actually run
+  against this repository.
+
+**Decision:** Delete `.codex/` rather than repair it.
+
+Fixing the paths would produce a working config for a harness nobody used,
+duplicating three scripts that already exist. The brief asks to see the tooling
+because the tooling is part of the work — and this part was not part of the
+work. Showing it implies a second harness was exercised, which would be a claim
+the repository cannot support.
+
+`AGENTS.md` stays. It is harness-agnostic by convention — several tools read a
+file by that name — and unlike `.codex/`, its content is current.
+
+**Also fixed here:** `CLAUDE.md` and `AGENTS.md` both pointed at
+`opencode.json` for the MCP server list. That file is not in the repository and
+never was — a dangling reference in the two documents that describe how agents
+work on this project. MCP configuration is per-developer and names local paths
+and credentials, so it is not versioned; the tables now say so instead of
+pointing at a file that does not exist.
+
+**Consequences:**
+
+- What remains under agent tooling is what actually ran: `.claude/` (4 agents,
+  4 skills, 3 hooks, settings), `.githooks/commit-msg` wired through
+  `core.hooksPath`, and gitleaks in GitHub Actions.
+- A reviewer no longer finds a hooks config that cannot execute, and no longer
+  reads about a configuration file that is absent.
+- If a second harness is genuinely adopted later, its config should be written
+  against that harness rather than copied — and with relative paths, which is
+  the actual lesson from `.codex/hooks.json`.
+
+---
+
 ## ADR-007 — Deferred scope (accepted risk)
 
 **Status:** Accepted
@@ -1304,6 +1357,146 @@ works against a real case.
 **Revisit trigger:** a live run swept early (lower the threshold's confidence,
 not the threshold), or moving evaluations out of process — a real queue makes
 the heartbeat redundant and the worker's own liveness authoritative.
+
+---
+
+## ADR-029 — Evaluations are not resumable; partial runs are recorded as debt
+
+**Status:** Accepted (debt, deliberately unpaid) — records a defect found in
+production on 2026-08-28 and the reason its fix is deferred rather than rushed.
+
+**Context — a real failure, not a hypothetical.** Three evaluations were
+launched within five minutes (SKY Airline 14:48, Guinness 14:51, Jetsmart
+14:53). Each caps its own Gemini calls at `EVAL_CONCURRENCY = 25`, so three at
+once is ~75 in flight. Under that load prompts began failing, and this is what
+was stored:
+
+| | Jetsmart / airlines |
+|---|---|
+| Prompts that produced responses | **9 of 20** |
+| Responses | 72 of 160 |
+| Prompt types with metrics | **3 of 5** — `feature` and `negative` missing entirely |
+| Status | **`completed`** |
+| Reported DWR | **48.6%** |
+
+That 48.6% is not comparable with any complete evaluation. The two missing
+types are the extremes of the distribution — `feature` averages 21% across
+stored runs and `negative` 62% — so dropping them does not add noise, it moves
+the number in a direction nobody can see from the dashboard.
+
+**The mechanism.** `_execute_evaluation` gathers all twenty prompts with
+`return_exceptions=True` and skips the ones that raised. Its only guard is
+`if not all_classifications: raise` — which catches the *total* failure. Losing
+one to nineteen prompts is silent, and the run is marked `completed` with
+whatever survived.
+
+**Two words that are not the same thing.** Naming these apart matters, because
+they need different fixes:
+
+- **Concurrency** is how many calls are in flight — the semaphore, and the
+  number of evaluations running at once. It is the **cause** here.
+- **Resumability** is whether a run that stopped part-way can be continued
+  instead of discarded. It is the **remedy**, and it does not exist.
+
+Fixing concurrency (a global cap across evaluations, or backoff on rate limits)
+reduces how often this happens. Only resumability makes it recoverable when it
+does.
+
+**Decision:** Record the defect, do not fix it in this deliverable. Three
+things would have to be built, and each has a design question this project has
+not answered:
+
+1. **Honest status.** `completed` must stop meaning "some prompts finished". A
+   `partial` state with a stored count of missing prompts, surfaced in the
+   dashboard, so a number derived from 45% of the corpus is never displayed
+   like one derived from all of it.
+2. **Resume.** Re-running only the prompts with no responses, keyed on
+   `(evaluation_id, prompt_id, run_index)`. The raw responses are already
+   immutable and addressable (ADR-005), so the data model supports it — what is
+   missing is the idempotency guarantee on re-entry.
+3. **A global concurrency cap.** The semaphore is per-evaluation, so N
+   simultaneous runs multiply the load by N. A process-wide budget would make
+   the failure rarer regardless of how many evaluations are started.
+
+**Why deferred rather than done:** the honest-status change touches the schema,
+the API contract and the dashboard; resume needs an idempotency design that
+`_execute_evaluation` does not currently have; and this was found after the
+deliverable's release. Shipping a half-designed resume is how partial runs got
+recorded as complete in the first place.
+
+**Interim mitigation, available today:** run evaluations one at a time. A single
+run at concurrency 25 has not exhibited this. The one partial row is left in
+place rather than deleted — like the stuck run in ADR-027, it is the evidence.
+
+**Consequences:**
+- One stored evaluation (Jetsmart, 2026-08-28) reports a DWR over an incomplete
+  corpus. Every other stored evaluation was audited and is complete: correct
+  response count and all five prompt types.
+- A reviewer reading the dashboard cannot tell that row apart from the others.
+  That is the defect, stated plainly rather than hidden.
+
+**Related:** ADR-027 states that partial completion is not attempted, and means
+it for the dead-job sweep — the sweep marks a stuck run `failed` rather than
+scoring its partial output. The success path did the opposite. The two are now
+consistent in intent and inconsistent in behaviour, which is exactly what this
+entry exists to flag.
+
+### When is a run late, and when is it dead? — the numbers for the UI
+
+The dashboard should say something before a user stares at a spinner that will
+never resolve. Two thresholds are needed, not one, because **the cost of being
+wrong differs by an order of magnitude**:
+
+- **Being early with a warning** costs a moment of unnecessary concern on a run
+  that finishes. Cheap. This threshold can be aggressive.
+- **Being early with "this is dead"** invites the user to abandon or restart a
+  live run. Expensive. This one must be conservative.
+
+**Measured, not guessed** — 26 complete evaluations in the stored data:
+
+| | N = 4 (80 calls) | N = 8 (160 calls) |
+|---|---|---|
+| Median duration | 75 s | **218 s** (3.6 min) |
+| Slowest observed | 90 s | **504 s** (8.4 min) |
+
+Duration does not scale linearly with N — concurrency saturates — so the
+threshold must be **derived from `sampling_n`**, not a constant. A constant tuned
+for N = 8 would leave an N = 4 run looking healthy for four times its own
+runtime.
+
+**Proposed thresholds:**
+
+1. **"This is taking longer than usual"** at roughly **2× the median for that
+   N** — about 7 minutes at N = 8, 2.5 minutes at N = 4. Informational, no
+   button, no alarm. It fires on the slowest observed real run, which is the
+   point: that run *was* unusually slow, and saying so is accurate.
+2. **"This run stopped" + Resume** only once the backend agrees. The sweep
+   (ADR-027) marks a silent run `failed`, and the dashboard already receives
+   `heartbeat_at` in the evaluation list — no API change is needed to compute
+   the same thing client-side. Tying the button to the backend's own verdict
+   keeps one definition of dead instead of two that can disagree.
+
+**A correction to ADR-027, from this measurement.** That entry justifies its
+10-minute sweep as "several times the worst realistic gap between heartbeats".
+The data does not support the phrasing: the slowest complete run took 504 s
+against a 600 s threshold, and a live run was observed silent for **304 s** —
+a margin of 1.2× on duration and 2.0× on the gap, not "several times". The
+threshold has not misfired, but it is tighter than documented.
+
+The better fix is not a larger number: it is **a more frequent heartbeat**.
+Today it is touched once per completed prompt, and the twenty prompts run
+concurrently under one semaphore, so they finish in bursts and the last few
+leave a long quiet tail. Touching it per stored response batch would shrink the
+gaps, keep 10 minutes genuinely conservative, and make the UI's "stopped"
+signal trustworthy enough to hang a Resume button on.
+
+**Not implemented here** — this section exists so the numbers are on record and
+the next person does not have to re-derive them.
+
+**Revisit trigger:** a second partial run appearing, any use of the metric where
+cross-evaluation comparison matters, or a complete run taking longer than the
+sweep threshold — at which point honest status stops being debt and becomes a
+correctness requirement.
 
 ---
 

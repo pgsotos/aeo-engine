@@ -149,6 +149,16 @@ dicho sin suavizar: es una capa, no dos.
 
 ### Cómo se trabajó
 
+**Se quitó `.codex/`** (ADR-030). Se había commiteado un espejo de los hooks
+para un segundo entorno, pero al revisarlo antes de la entrega aparecieron tres
+cosas: los tres scripts son **byte-idénticos** a los de `.claude/`, su
+`hooks.json` **hardcodea rutas absolutas** al directorio del autor —así que no
+puede funcionar en la máquina de nadie más— y ese entorno nunca se usó contra
+este repositorio. Arreglar las rutas habría dejado un config funcional para algo
+que no se ejecutó; mostrarlo insinuaría un segundo entorno que el repo no puede
+respaldar. Queda lo que sí corrió. En el mismo cambio se corrigió que
+`CLAUDE.md` y `AGENTS.md` apuntaran a un `opencode.json` que no existe.
+
 El encargo pide versionar el andamiaje de agentes, así que también está
 documentado: el modelo de ramas Git Flow (ADR-013), rebase en lugar de merge en
 ramas de trabajo (ADR-014), y escaneo de secretos con higiene de `.gitignore`
@@ -188,6 +198,29 @@ corridas separadas en el tiempo no es válido; por eso cada respuesta guarda su
 `model_id` y su marca temporal.
 
 ---
+
+**Las evaluaciones no son reanudables** (ADR-029). Se lanzaron tres
+evaluaciones en cinco minutos; cada una limita sus llamadas a Gemini en 25, así
+que tres a la vez son ~75 en vuelo. Bajo esa carga empezaron a fallar prompts, y
+una corrida quedó guardada con **9 de 20 prompts** y marcada como `completed`:
+le faltan enteros los tipos `feature` y `negative`, y su DWR de 48.6% no es
+comparable con ninguna evaluación completa.
+
+Conviene separar dos palabras que no son lo mismo: la **concurrencia** es
+cuántas llamadas van en paralelo —es la causa—, y la **reanudación** es poder
+retomar una corrida cortada por la mitad —es el remedio, y no existe—. Bajar la
+concurrencia hace que pase menos seguido; sólo la reanudación lo vuelve
+recuperable cuando pasa. El ADR dice qué habría que construir y por qué no se
+construyó ahora. Mitigación disponible hoy: correr las evaluaciones de a una.
+
+El ADR también deja medidos los umbrales para que el dashboard avise, en vez de
+dejar al usuario mirando un spinner eterno. Sobre 26 evaluaciones completas: con
+N = 8 la mediana es **218 s** y la más lenta real **504 s**; con N = 4, 75 s. El
+umbral tiene que derivarse de `sampling_n`, no ser una constante. Y hacen falta
+**dos**, porque equivocarse cuesta distinto: avisar temprano que algo tarda sólo
+genera una preocupación innecesaria, mientras que declarar muerta una corrida
+viva invita a abandonarla. De paso, la medición corrige al propio ADR-027: su
+margen real es 1.2×, no "varias veces" como dice ahí.
 
 ## Lo que se dejó afuera
 

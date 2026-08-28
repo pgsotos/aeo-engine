@@ -73,10 +73,9 @@ aeo-engine/
 ├── migrations/          Supabase SQL schema
 ├── docker-compose.yml   local stack — `docker compose up`
 ├── .claude/             agent setup — agents/, skills/, hooks/, settings.json
-├── .codex/              the same hooks, wired for the Codex harness
 ├── .githooks/           commit-msg validator (Conventional Commits)
 ├── CLAUDE.md            agent rules (Claude Code)
-├── AGENTS.md            agent rules (Codex) — same content
+├── AGENTS.md            agent rules, for harnesses that read AGENTS.md
 ├── DECISIONS.md         decision & scope log (decided / assumed / left out)
 ├── DECISIONES.md        resumen en español de las decisiones
 └── README.es.md         este README en español
@@ -247,7 +246,6 @@ get forgotten:
 | `conventional-commit.sh` | git `commit-msg` | Rejects a bad commit format or any AI attribution |
 | `gitleaks` | GitHub Actions | Scans every push and PR for secrets |
 
-The same hook scripts exist under `.codex/` for the Codex harness.
 
 Two things worth noting, both recorded in `DECISIONS.md`: subagent identity
 comes from the `agent_type` field in the hook's stdin JSON, not an environment
