@@ -55,9 +55,11 @@ asks for this to be committed; these entries explain why each piece exists.
 
 | | |
 |---|---|
-| [ADR-008](#adr-008--strict-branch-and-pr-governance) · [ADR-013](#adr-013--git-flow-branching-main--develop--feature) · [ADR-014](#adr-014--feature-branches-rebase-never-merge) | Branch model, merge gate, rebase over merge |
+| [ADR-013](#adr-013--git-flow-branching-main--develop--feature) · [ADR-014](#adr-014--feature-branches-rebase-never-merge) | Branch model; rebase over merge on feature branches |
+| [ADR-021](#adr-021--branch-protection-enforces-the-branch-model) | Branch protection makes that model enforced, not aspirational |
 | [ADR-015](#adr-015--secret-scanning-and-gitignore-hygiene) | Secret scanning and `.gitignore` hygiene |
 | [ADR-007](#adr-007--deferred-scope-accepted-risk) | Scope deferred under deadline, with the risk named |
+| [ADR-008](#adr-008--strict-branch-and-pr-governance) | *Superseded by ADR-013 + ADR-021* — the original human-gate governance |
 
 ---
 
@@ -210,24 +212,28 @@ overhead is a deliberate, documented bet on the long-term platform.
 
 ## ADR-008 — Strict branch and PR governance
 
-**Status:** Accepted
+**Status:** Superseded by ADR-013 (branch model) and ADR-021 (enforcement)
 
 **Context:** Multiple agents write to one monorepo. Direct commits to `main`
 would make ownership violations and unreviewed work land in the trunk.
 
-**Decision:** No direct commits to `main`. Every milestone or sub-task runs on a
-dedicated branch (`feature/hito-<N>-<slug>`). Merge to `main` requires:
+**Decision (original):** No direct commits to `main`. Every milestone or
+sub-task runs on a dedicated branch (`feature/hito-<N>-<slug>`). Merge to `main`
+requires an audit by `team-lead` (atomic Conventional Commits, correct per-agent
+file ownership, scope matches the milestone) and approval from
+`qa-validator-agent` (acceptance criteria met, tests pass).
 
-1. `team-lead` audits the branch — atomic Conventional Commits, correct
-   per-agent file ownership, scope matches the milestone.
-2. `qa-validator-agent` approves: acceptance criteria met, tests pass.
+**Revision:** Every specific in this ADR is now wrong. The `team-lead` and
+`qa-validator-agent` agents were removed in the ADR-009 pivot; the
+`feature/hito-<N>-*` naming went with the milestone plan; the hook is
+`owner-guard.sh`. The branch model that replaced it is ADR-013, and the gate is
+no longer a human agent but GitHub branch protection — ADR-021.
 
-Only then does `team-lead` merge. Milestone 1 governance/setup commits are the
-last work committed directly to `main`.
+The principle survived intact: nothing reaches `main` without review and a
+passing check. Only the machinery changed.
 
-**Consequences:** Slower than committing straight to trunk, but every change to
-`main` is reviewed and attributable. The `file-ownership-guard` hook enforces
-directory ownership during work; this ADR adds the human-gate before merge.
+**Consequences (original):** Slower than committing straight to trunk, but every
+change to `main` is reviewed and attributable.
 
 ---
 
@@ -318,8 +324,8 @@ branch.
 - `develop` is the integration branch, created from `main`.
 - All work happens on `feature/<slug>` branches created from `develop`.
 - `feature` → `develop` for integration; `develop` → `main` for release.
-- No direct commits to `main` or `develop`. See ADR-008 for the merge
-  governance (team-lead audit + qa approval).
+- No direct commits to `main` or `develop`. ADR-021 makes this enforced rather
+  than a convention.
 
 **Consequences:** A stable `main` that is always deployable, an integration
 `develop` where features accumulate, and isolated `feature` branches for
@@ -551,6 +557,44 @@ or making the project public with the key in a client bundle. Any of those makes
 RLS mandatory, not optional. The enabling SQL is one `ALTER TABLE … ENABLE ROW
 LEVEL SECURITY` per table, but it must land together with policies — read for
 `anon`, write restricted to the service role — or the application stops working.
+
+---
+
+## ADR-021 — Branch protection enforces the branch model
+
+**Status:** Accepted
+
+**Context:** ADR-008 and ADR-013 both state that nothing is committed directly
+to `main` or `develop`. Nothing enforced it. GitHub said so plainly — *"Your
+main branch isn't protected"* — and it was right: the releases up to `fb1a93c`
+were direct `git push origin main`. A reviewer reading the governance ADRs and
+then checking the repository settings would find the rule aspirational.
+
+**Decision:** Enforce it in GitHub.
+
+- **`main`** — classic branch protection: a pull request is required (0
+  approvals, since a solo author cannot approve their own PR), the `scan`
+  check (gitleaks) must pass, the branch must be up to date, force pushes and
+  deletion are blocked, and **the rules apply to administrators**. Exempting
+  admins on a single-admin repository would make the protection theatre.
+- **`develop`** — a ruleset with the same rules.
+
+**A mistake worth recording:** `required_linear_history` was enabled on `main`
+first. It forbids merge commits, so the release PR could only be rebased —
+which rewrote the commit and left `main` and `develop` with identical trees and
+different SHAs, diverging permanently and getting worse with each release.
+Linear history is right for `feature` → `develop`, where ADR-014 already
+mandates rebase; it is incompatible with the `develop` → `main` release merge
+that Git Flow depends on. It has been turned off on `main`.
+
+**Consequences:** Releases are now pull requests (`develop` → `main`), not
+pushes — one more step, and the documented governance is finally true. If an
+emergency ever requires a direct push, protection must be removed explicitly and
+visibly:
+
+```bash
+gh api -X DELETE repos/pgsotos/aeo-engine/branches/main/protection
+```
 
 ---
 

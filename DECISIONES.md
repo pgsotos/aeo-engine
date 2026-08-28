@@ -99,9 +99,24 @@ dicho sin suavizar: es una capa, no dos.
 ### Cómo se trabajó
 
 El encargo pide versionar el andamiaje de agentes, así que también está
-documentado: gobernanza de ramas y compuerta de merge (ADR-008, ADR-013), rebase
-en lugar de merge en ramas de trabajo (ADR-014), y escaneo de secretos con
-higiene de `.gitignore` (ADR-015).
+documentado: el modelo de ramas Git Flow (ADR-013), rebase en lugar de merge en
+ramas de trabajo (ADR-014), y escaneo de secretos con higiene de `.gitignore`
+(ADR-015). El ADR-008 —la gobernanza original, con auditoría de un agente
+`team-lead`— quedó superado: esos agentes desaparecieron en el pivote y la
+compuerta hoy la aplica GitHub, no una persona.
+
+**La regla ahora se cumple sola** (ADR-021). Los ADR decían "nunca commitear
+directo a `main`", pero nada lo impedía: los releases hasta `fb1a93c` fueron
+pushes directos. Ahora `main` y `develop` tienen protección — PR obligatorio,
+gitleaks en verde, sin force-push ni borrado, y **la restricción alcanza también
+a los administradores**: eximirlos en un repositorio con un solo admin
+convertiría la protección en decoración.
+
+El ADR-021 también registra un error propio: se activó `required_linear_history`
+en `main`, que prohíbe merge commits y por lo tanto rompe el merge de release
+`develop → main` que Git Flow necesita. El primer release quedó rebasado y las
+dos ramas divergieron con el mismo contenido y distinto hash. Historia lineal
+sirve para `feature → develop`; para el release, no.
 
 ---
 
