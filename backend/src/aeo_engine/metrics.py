@@ -7,6 +7,7 @@ appropriate for small sample sizes and doesn't require normal approximation.
 from __future__ import annotations
 
 import math
+import statistics
 
 from aeo_engine.models import (
     Classification,
@@ -43,6 +44,31 @@ def wilson_score_interval(
     return (round(lower, 4), round(upper, 4))
 
 
+def compute_share_of_voice(win_rate: float, alternatives: int, total: int) -> float:
+    """Compute Share of Voice: DWR plus half the alternative-mention share.
+
+    Complementary to Direct Answer Win Rate — it rewards presence in answers
+    even when the brand is not the direct recommendation. Clamped to [0, 1];
+    returns 0.0 when there are no runs to avoid division by zero.
+    """
+    if total <= 0:
+        return 0.0
+    raw = win_rate + 0.5 * (alternatives / total)
+    return min(1.0, max(0.0, raw))
+
+
+def compute_consistency(win_rates: list[float]) -> float | None:
+    """Brand-level consistency: 1 minus the population stddev of per-type DWR.
+
+    The five prompt types are the full population of an evaluation, so the
+    population standard deviation is used. Returns None when fewer than two
+    per-type rates exist — a single rate has no spread to measure.
+    """
+    if len(win_rates) < 2:
+        return None
+    return 1 - statistics.pstdev(win_rates)
+
+
 def compute_metrics(
     classifications: list[ClassificationResult],
     prompt_type: PromptType,
@@ -68,12 +94,14 @@ def compute_metrics(
 
     win_rate = direct_wins / total if total > 0 else 0.0
     ci_lower, ci_upper = wilson_score_interval(direct_wins, total)
+    share_of_voice = compute_share_of_voice(win_rate, alternatives, total)
 
     return MetricSummary(
         evaluation_id=evaluation_id,
         prompt_type=prompt_type,
         brand=brand,
         win_rate=round(win_rate, 4),
+        share_of_voice=round(share_of_voice, 4),
         ci_lower=ci_lower,
         ci_upper=ci_upper,
         total_runs=total,

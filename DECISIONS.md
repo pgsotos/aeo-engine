@@ -70,6 +70,7 @@ Linear is the brief's configuration, not a constant in the code.
 | [ADR-023](#adr-023--how-the-engine-talks-to-gemini) | Temperature, token budget, and the Chat API |
 | [ADR-011](#adr-011--gemini-36-flash-as-the-measured-engine) | `gemini-3.6-flash` as the measured engine |
 | [ADR-012](#adr-012--generic-aeo-engine-no-hardcoded-brands) | Generic engine — no hardcoded brands |
+| [ADR-025](#adr-025--category-cleaning-heuristic-and-scoped-frontend-test-harness) | Resolver cleaning heuristic, 404 on empty, scoped vitest harness |
 
 ### B · Architecture — the stack, and the one abandoned
 
@@ -818,6 +819,78 @@ passing check. Only the machinery changed.
 
 **Consequences (original):** Slower than committing straight to trunk, but every
 change to `main` is reviewed and attributable.
+
+---
+
+## ADR-014 — Share of Voice and Consistency score (strict AEO methodology)
+
+**Status:** Accepted
+
+**Context:** Direct Answer Win Rate alone punishes presence: a brand mentioned
+as an alternative scores zero for the direct answer and is invisible to the
+metric. Decision D2 of the strict-AEO design wanted a "consistency" signal for
+how stable a brand's DWR is across the five prompt types.
+
+**Decision:**
+- **Share of Voice (SoV)** = `win_rate + 0.5 × (alternatives / total)`,
+  **clamped to [0, 1]**. The +0.5 alternative weight rewards presence in answers
+  without equating an alternative mention to a direct win. The clamp overrides
+  the design's natural [0, 1.5] upper bound (user requirement).
+  Zero runs return `0.0` instead of a division by zero.
+- SoV lives on the **`metrics` table** (it is per brand × prompt_type) as
+  `share_of_voice REAL NOT NULL` — existing rows default to NULL until the next
+  evaluation writes them (additive migration `002_strict_aeo.sql`).
+- **Consistency** = `1 − σ` where σ is the **population standard deviation**
+  of the focus brand's five per-type DWR values (`statistics.pstdev`; the five
+  prompt types are the full population, not a sample). `NULL` when fewer than
+  two per-type rates exist (a single rate has no spread to measure) — resolving
+  the ambiguity in the change proposal, which named `0.0`/`1.0` for empty/single
+  while the design and tasks said "None if <2 types".
+- Consistency lives on the **`evaluations` table** (one value per evaluation),
+  NOT on `metrics` — the `metrics.prompt_type` CHECK constraint
+  (`IN ('direct','comparative','use_case','feature','negative')`) forbids a
+  non-type row.
+- DWR stays the **primary** metric; SoV and consistency are complementary.
+- Frontend types are `number | null` because pre-migration rows are NULL on the
+  wire; the UI renders `—` instead of a number.
+
+**Consequences:** Two new columns (nullable, additive migration), two pure
+functions in `metrics.py`, `run_evaluation` persists consistency after
+`save_metrics`, and the dashboard shows SoV as a secondary sky-blue bar
+underneath the DWR bar.
+
+---
+
+## ADR-025 — Category cleaning heuristic and scoped frontend test harness
+
+**Status:** Decided
+
+**Context:** The brand-setup cascade resolves categories and competitors from
+Gemini. Under the old 128-token cap a category answer could truncate mid
+sentence and leak meta-language like "Select the…" into the selectable options,
+and an empty competitor result returned HTTP 200 with an empty list — Run
+disabled with no explanation. The frontend had no test runner at all.
+
+**Decision:**
+- **Category cleaning stays a heuristic.** `resolve_brand_categories` raises its
+  token cap (128 → 512) and feeds the raw answer through a pure
+  `_clean_categories` helper that drops a small, conservative meta-language
+  blacklist (`select`, `please`, `here are`, …) and caps each category at 50
+  chars. Retry is the recovery path if the heuristic ever over-rejects a genuine
+  category — the LLM response space is untested and flagged as risk. There is no
+  Gemini re-validation round-trip (cost/latency; no evidence one is needed yet).
+- **Empty competitors fail loudly.** `resolve-competitors` returns HTTP 404 with
+  a `detail` message when the list is empty, mirroring `resolve-category`; the
+  client surfaces that `detail` inline with a Retry, and defensively treats a
+  200+empty list as a failure too.
+- **The frontend test harness is scoped, not a rollout.** vitest +
+  @testing-library/react + jsdom were added ONLY to cover the item-3 form state
+  machine in exactly ONE hook test file (`useEvaluationForm.test.ts`). No general
+  frontend test rollout; backend pytest covers the server-side cleaning and 404.
+
+**Consequences:** Three pure helpers (`_clean_categories`, `resolveErrorKind`,
+and the component-derived step narrative), the 404 mirror, inline step errors
+with Retry, and a single vitest hook test file run via `bun run test`.
 
 ---
 

@@ -1,6 +1,7 @@
 "use client";
 
-import type { MetricSummary, PromptType } from "../types";
+import { PROMPT_TYPES } from "../constants";
+import type { MetricSummary } from "../types";
 import { PROMPT_TYPE_LABELS } from "../types";
 
 interface HeatmapProps {
@@ -20,14 +21,6 @@ function winRateBgBar(rate: number): string {
   if (rate >= 0.4) return "bg-yellow-500";
   return "bg-red-500";
 }
-
-const PROMPT_TYPES: PromptType[] = [
-  "direct",
-  "comparative",
-  "use_case",
-  "feature",
-  "negative",
-];
 
 export default function Heatmap({ metrics }: HeatmapProps) {
   // Derive brands dynamically from the metrics data
@@ -87,6 +80,12 @@ export default function Heatmap({ metrics }: HeatmapProps) {
                       <div className="text-lg font-semibold">{pct}%</div>
                       <div className="mt-0.5 text-xs opacity-70">
                         CI: {ciLow}%–{ciHigh}%
+                      </div>
+                      <div className="mt-0.5 text-[10px] opacity-60">
+                        SoV:{" "}
+                        {cell.share_of_voice == null
+                          ? "—"
+                          : `${(cell.share_of_voice * 100).toFixed(1)}%`}
                       </div>
                       <div className="mt-1.5 mx-auto h-1 w-full max-w-[80px] overflow-hidden rounded-full bg-zinc-800">
                         <div

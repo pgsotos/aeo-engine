@@ -32,7 +32,7 @@ from aeo_engine.gemini import (
     resolve_brand_competitors,
     run_parallel_sampling,
 )
-from aeo_engine.metrics import compute_per_type_metrics
+from aeo_engine.metrics import compute_consistency, compute_per_type_metrics
 from aeo_engine.models import (
     ClassificationResult,
     Competitor,
@@ -241,6 +241,12 @@ async def resolve_competitors(brand: str, category: str) -> CompetitorsResponse:
         raise HTTPException(status_code=400, detail="category is required")
 
     competitors = await resolve_brand_competitors(brand.strip(), category.strip())
+    if not competitors:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Could not resolve competitors for '{brand}'",
+        )
+
     return CompetitorsResponse(
         brand=brand.strip(),
         category=category.strip(),
@@ -426,6 +432,14 @@ async def _execute_evaluation(
             classifications_by_type, evaluation_id, all_brands
         )
         save_metrics(metrics)
+
+        # Brand-level consistency over the focus brand's per-type DWR
+        win_rates = [m.win_rate for m in metrics if m.brand == all_brands[0]]
+        consistency = compute_consistency(win_rates)
+        if consistency is not None:
+            update_evaluation(evaluation_id, {"consistency": consistency})
+
+        # Mark evaluation as completed
         update_evaluation(
             evaluation_id,
             {

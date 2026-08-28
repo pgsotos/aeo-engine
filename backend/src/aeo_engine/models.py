@@ -66,6 +66,7 @@ class Evaluation(BaseModel):
     category: str
     sampling_n: int
     status: str = "pending"  # pending | running | completed | failed
+    consistency: float | None = None  # 1 - pstdev over per-type DWR; None if <2 types
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     completed_at: datetime | None = None
 
@@ -77,6 +78,7 @@ class MetricSummary(BaseModel):
     prompt_type: PromptType
     brand: str
     win_rate: float
+    share_of_voice: float  # complementary to DWR: win_rate + 0.5 * (alternatives / total)
     ci_lower: float  # confidence interval lower bound
     ci_upper: float  # confidence interval upper bound
     total_runs: int
