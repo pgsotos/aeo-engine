@@ -1,6 +1,7 @@
 "use client";
 
-import type { MetricSummary, PromptType } from "../types";
+import { PROMPT_TYPES } from "../constants";
+import type { MetricSummary } from "../types";
 import { PROMPT_TYPE_LABELS } from "../types";
 
 interface HeatmapProps {
@@ -20,14 +21,6 @@ function winRateBgBar(rate: number): string {
   if (rate >= 0.4) return "bg-yellow-500";
   return "bg-red-500";
 }
-
-const PROMPT_TYPES: PromptType[] = [
-  "direct",
-  "comparative",
-  "use_case",
-  "feature",
-  "negative",
-];
 
 export default function Heatmap({ metrics }: HeatmapProps) {
   // Derive brands dynamically from the metrics data
