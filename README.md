@@ -12,8 +12,10 @@ broad web visibility (GEO).
 | **API** | <https://aeo-engine-35ii.onrender.com> · [OpenAPI docs](https://aeo-engine-35ii.onrender.com/docs) |
 
 A **Start here** button on the dashboard opens the most recent finished
-evaluation, so there are real results to read without running anything.
-Seventeen evaluations across fifteen brands and nine categories are stored.
+evaluation, so there are real results to read without running anything. The
+live database holds **24 evaluations across 18 brands and 21 categories** —
+including non-IT brands (e.g. Tesla/EVs, Duolingo, Figma, Shopify), which
+exercises the engine's generic design.
 
 ## What it measures
 
@@ -43,6 +45,21 @@ Three things make the number trustworthy rather than decorative:
 Raw Gemini text is stored verbatim and never mutated; every metric is a pure
 function over it, so any number on screen can be traced back to the response
 that produced it.
+
+### The evaluation detail, made legible
+
+Each evaluation's detail page layers two things on top of the raw responses so
+the data reads like a conclusion instead of a log dump:
+
+- **Executive Summary** — a deterministic interpretation of the metrics: a
+  verdict (winning / contested / relegated), KPI chips (win rate with its
+  Wilson interval), the focus brand's strengths and weaknesses from the five
+  prompt types, and who currently leads it. It is a pure function over the same
+  metric code — no LLM summarizer that could break traceability.
+- **Source Auditor** — which cited domains appear in the responses and how each
+  co-occurs with the focus brand being the direct winner. It relies on
+  `google_search` grounding metadata; see **ADR-026** for the current caveat
+  that `gemini-3.6-flash` rarely returns usable grounding chunks today.
 
 ## Repository layout
 
@@ -74,7 +91,7 @@ aeo-engine/
 ## Run it locally
 
 > **You do not need to run anything to see the results.** The deployed
-> dashboard above holds seventeen finished evaluations. Run it locally only to
+> dashboard above holds 24 finished evaluations. Run it locally only to
 > read the code with the app in front of you, or to evaluate your own brand.
 
 Running it needs two credentials of your own: a **Gemini API key** (the engine

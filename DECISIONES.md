@@ -2,7 +2,7 @@
 
 Resumen de por qué el proyecto quedó como quedó. El registro completo, con el
 contexto y las consecuencias de cada entrada, está en
-**[DECISIONS.md](DECISIONS.md)** (en inglés): 24 ADRs, 2 supuestos y 4
+**[DECISIONS.md](DECISIONS.md)** (en inglés): 26 ADRs, 2 supuestos y 4
 exclusiones, ordenados en tres bloques — método y medición, arquitectura, y
 proceso con agentes. Este documento es el mapa; aquel es el territorio.
 
@@ -84,7 +84,7 @@ mejor herramienta?" esconde dónde pierde una marca. El corpus cubre cinco tipos
 | Característica | "¿La mejor con atajos de teclado?" | Fuerza en un atributo concreto |
 | Negativo | "¿Por qué NO usar Linear?" | Resistencia al encuadre negativo |
 
-Esto resultó ser el hallazgo del proyecto: en las diecinueve evaluaciones, las
+Esto resultó ser el hallazgo del proyecto: en las evaluaciones registradas, las
 marcas son fuertes en `comparativo` y `negativo` y débiles en `característica`
 (Notion 3 %, Canva 9 %, Zoom 6 %). Una métrica única lo habría ocultado.
 
@@ -207,8 +207,25 @@ pivote de ADR-009.
 multi-tenencia, sin evaluaciones programadas, sin alertas, sin editor del corpus
 de prompts, sin exportación.
 
-**Dos ramas quedaron abiertas a propósito.** Los PR #1 (Share of Voice +
-consistencia entre tipos de prompt) y #2 (Source Auditor: qué búsquedas ejecutó
-el motor y qué URL respalda cada fragmento de texto) son profundidad real, pero
-son grandes y llegaron cerca del cierre. Se decidió no fusionarlos en lugar de
-arriesgar una entrega que funciona.
+**Source Auditor y grounding** (Slice 2, PR #2, ya fusionado). El segundo
+slice agrega el **Source Auditor** al dashboard: qué dominios cita cada respuesta
+y qué dominio se correlaciona con el Direct Answer Win Rate de la marca foco.
+La captura de grounding (con `google_search`) y el ranking por impacto están en
+el backend y en la API; el dashboard los muestra por evaluación.
+
+**Una limitación documentada del grounding** (ADR-026). `gemini-3.6-flash`
+devuelve grounding de Google Search de forma muy inconsistente: en 480
+respuestas reales de 3 evaluaciones, **0/480** persistió `grounding_metadata` no
+nulo. El pipeline está bien configurado (`tools=[google_search]`, persistencia
+verbatim) — es una limitación del **modelo**, no un bug. El Source Auditor
+funciona y se despliega, pero hasta que se use un modelo o modo que devuelva
+`groundingChunks > 0` (un tier Pro, por ejemplo) no tiene datos que atribuir.
+El ADR define el trigger de revisión: re-evaluar al cambiar a un modelo con
+grounding confiable y re-baselinear la tasa esperada.
+
+**Executive Summary** (PR #24, ya fusionado). Para que el detalle de una
+evaluación sea legible por una persona, se agregó una capa de interpretación
+determinista sobre las métricas existentes: veredicto (ganadora / en disputa /
+relegada), chips de KPI (win rate + intervalo), fortalezas y debilidades, y quién
+está por delante de la marca foco. Es una función pura (`interpret.ts`) sobre
+las métricas ya calculadas — no hay un resumen LLM que rompa la auditabilidad.
