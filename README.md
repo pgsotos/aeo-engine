@@ -9,9 +9,9 @@ broad web visibility (GEO).
 | **Dashboard** | <https://aeo-engine-pgsotos.vercel.app> |
 | **API** | <https://aeo-engine-35ii.onrender.com> · [OpenAPI docs](https://aeo-engine-35ii.onrender.com/docs) |
 
-The dashboard opens on the most recent completed evaluation, so there is a real
-result on screen without running anything. Sixteen evaluations across fourteen
-brands and eight categories are already stored.
+A **Start here** button on the dashboard opens the most recent finished
+evaluation, so there are real results to read without running anything.
+Seventeen evaluations across fifteen brands and nine categories are stored.
 
 ## What it measures
 
@@ -52,7 +52,11 @@ aeo-engine/
 ├── frontend/            Next.js 16 dashboard (Bun + Tailwind)
 ├── migrations/          Supabase SQL schema
 ├── docker-compose.yml   local stack — `docker compose up`
-├── CLAUDE.md            agent guidance and rules
+├── .claude/             agent setup — agents/, skills/, hooks/, settings.json
+├── .codex/              the same hooks, wired for the Codex harness
+├── .githooks/           commit-msg validator (Conventional Commits)
+├── CLAUDE.md            agent rules (Claude Code)
+├── AGENTS.md            agent rules (Codex) — same content
 ├── DECISIONS.md         decision & scope log (decided / assumed / left out)
 └── OBJECTIVE.md         project scope and goals
 ```
@@ -152,12 +156,47 @@ Nothing is hardcoded to a brand: pass any `brand` / `category` / `competitors`,
 or let Gemini resolve them with the two `resolve-*` endpoints (which is what the
 dashboard form does).
 
-## Agent Teams
+## How this was built
+
+This project was written with AI coding agents, and the setup that made that
+work is committed alongside the code.
+
+**Instructions** — `CLAUDE.md` (Claude Code) and `AGENTS.md` (Codex) carry the
+same rules: what the project measures, the analytical constraints that are not
+negotiable (immutable raw responses, pure metric functions, N-run sampling,
+inverted pairs), the stack conventions, and who may write where.
+
+**Specialist agents** — `.claude/agents/team/`, each scoped to one directory:
 
 | Agent | Writes in | Role |
 |---|---|---|
 | `backend-agent` | `backend/` | Python, FastAPI, Gemini, metrics |
 | `frontend-agent` | `frontend/` | Next.js, TypeScript, dashboard |
+| `db-agent` | `migrations/` + Supabase | Schema, SQL, migrations |
+| `deploy-agent` | `render.yaml`, `frontend/` config | Render + Vercel |
+
+**Skills** — `.claude/skills/`, loaded on demand instead of bloating the base
+instructions: `aeo-api` (endpoint contract), `aeo-testing` (how to run the
+checks), `aeo-deploy` (Render + Vercel with env vars), `git-flow` (branching,
+commit format, merge governance).
+
+**Hooks** — deterministic guardrails, because rules an agent has to *remember*
+get forgotten:
+
+| Hook | Event | What it does |
+|---|---|---|
+| `owner-guard.sh` | `PreToolUse` | Blocks a write outside the agent's directory |
+| `ruff-autoformat.sh` | `PostToolUse` | Formats and lints Python after every edit |
+| `conventional-commit.sh` | git `commit-msg` | Rejects a bad commit format or any AI attribution |
+| `gitleaks` | GitHub Actions | Scans every push and PR for secrets |
+
+The same hook scripts exist under `.codex/` for the Codex harness.
+
+Two things worth noting, both recorded in `DECISIONS.md`: subagent identity
+comes from the `agent_type` field in the hook's stdin JSON, not an environment
+variable (ADR-015 context); and `PreCommit` is not a Claude Code hook event, so
+commit validation runs as a real git `commit-msg` hook via
+`git config core.hooksPath .githooks`.
 
 ## Working in this repo
 
