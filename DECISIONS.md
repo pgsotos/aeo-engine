@@ -429,6 +429,55 @@ offline mode.
 
 ---
 
+## ADR-019 — One database for now; per-environment databases deferred
+
+**Status:** Accepted (deferred implementation)
+
+**Context:** Every environment — production, local development, feature
+branches, and the deployed preview each PR gets on Vercel — currently reads and
+writes the **same** Supabase project (`aeo-engine`). Consequences observed
+during the build:
+
+- Evaluations run while testing land in the same table a reviewer sees. Four
+  junk rows (two `sony` scratch runs, two duplicates) had to be deleted by hand
+  before the demo data was presentable.
+- A destructive schema change made while developing would take production with
+  it. Nothing prevents it today.
+- There is no way to test a migration before it is live.
+
+**Decision for the deliverable:** keep the single database. The blast radius is
+one developer and demo data, the cost of a mistake is re-running an evaluation,
+and splitting environments hours before the deadline means touching production
+credentials for no benefit a reviewer can see.
+
+**Decision for what comes next**, in the order it should be done:
+
+1. **A migration flow first.** `migrations/001_initial_schema.sql` is applied by
+   hand in the Supabase SQL editor. Multiple databases without automated
+   migrations drift apart within days, which is worse than one database.
+   Adopt the Supabase CLI (`supabase migration new` / `db push`) and apply
+   migrations from CI.
+2. **Then split the environments.** Two options, in preference order:
+   - **Supabase Branching** (needs a paid plan, roughly \$0.32/day per active
+     branch). A branch is a real Postgres with the migrations applied and its
+     own URL and keys. The GitHub integration creates one when a PR opens and
+     destroys it on merge — per-PR isolation with no manual work. The
+     "Supabase Preview" check already appears on this repo's PRs (currently
+     skipping) because the integration is wired but branching is off.
+   - **A second free project** for `develop` and feature work, with the current
+     project reserved for `main`. Free, but feature branches share one database
+     (no per-PR isolation) and migrations must be applied to both.
+3. **Wire the credentials per environment:** `SUPABASE_URL` / `SUPABASE_KEY` per
+   Render service and per Vercel environment (production vs preview), so the
+   deployed preview of a PR talks to that PR's database.
+
+**Consequences of deferring:** development keeps writing to the production
+database, so demo data needs occasional manual cleanup and a careless schema
+change is genuinely dangerous. This is accepted knowingly for a solo-developer
+technical test, and is the first thing to fix if the project continues.
+
+---
+
 ## Section 2 — Assumptions (ASM)
 
 Assumptions are things taken as true without full proof. Each carries a risk if
