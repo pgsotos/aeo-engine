@@ -18,23 +18,53 @@ _MAX_RETRIES = 3
 _RETRY_BASE_DELAY = 1.0  # seconds; grows 3x per attempt
 
 
+_SETUP_HINT = """
+Gemini is not configured. Set this in backend/.env (see .env.example):
+
+  GEMINI_API_KEY=<your key>
+
+Create a key at https://aistudio.google.com/apikey — the free tier is enough.
+"""
+
+
 def _get_client() -> genai.Client:
-    """Create a Gemini client from settings."""
+    """Create a Gemini client from settings.
+
+    Raises with setup instructions when the key is absent, rather than letting
+    the SDK fail deep inside an evaluation.
+    """
+    if not settings.gemini_api_key:
+        raise RuntimeError(f"Missing GEMINI_API_KEY.\n{_SETUP_HINT}")
     return genai.Client(api_key=settings.gemini_api_key)
+
+
+def _is_transient(exc: Exception) -> bool:
+    """Is this worth retrying?
+
+    Rate limits (429) and 5xx blips pass. A 4xx — an invalid key, a malformed
+    request — will fail identically every time, so retrying it only delays the
+    error by the whole backoff sequence, multiplied by every call in flight.
+    """
+    status = getattr(exc, "code", None) or getattr(exc, "status_code", None)
+    if isinstance(status, int):
+        return status == 429 or status >= 500
+    text = str(exc)
+    return "429" in text or "RESOURCE_EXHAUSTED" in text or " 5" in text[:8]
 
 
 async def _call_in_thread_with_retry(fn: Callable[[], str]) -> str:
     """Run a blocking Gemini call in a thread, retrying transient failures.
 
-    Rate limits (429) and brief 5xx blips are common under parallel load; a few
+    Rate limits and brief 5xx blips are common under parallel load; a few
     backed-off retries absorb them without failing the whole evaluation.
+    Anything else is raised immediately.
     """
     delay = _RETRY_BASE_DELAY
     for attempt in range(_MAX_RETRIES):
         try:
             return await asyncio.to_thread(fn)
-        except Exception:
-            if attempt == _MAX_RETRIES - 1:
+        except Exception as exc:
+            if attempt == _MAX_RETRIES - 1 or not _is_transient(exc):
                 raise
             await asyncio.sleep(delay)
             delay *= 3
