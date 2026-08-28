@@ -428,7 +428,7 @@ async def _execute_evaluation(
         save_metrics(metrics)
 
         # Brand-level consistency over the focus brand's per-type DWR
-        win_rates = [m.win_rate for m in metrics if m.brand == request.brand]
+        win_rates = [m.win_rate for m in metrics if m.brand == all_brands[0]]
         consistency = compute_consistency(win_rates)
         if consistency is not None:
             update_evaluation(evaluation_id, {"consistency": consistency})
