@@ -83,7 +83,7 @@ uv run uvicorn aeo_engine.main:app --reload
 ```bash
 cd frontend
 bun install
-cp .env.example .env.local   # fill in NEXT_PUBLIC_BACKEND_URL
+cp .env.example .env.local   # fill in NEXT_PUBLIC_API_URL
 bun run dev
 ```
 

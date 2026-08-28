@@ -32,7 +32,7 @@ You are the deployment specialist for `aeo-engine`.
 ## Frontend (Vercel)
 
 - Deploy the `frontend/` directory via Vercel.
-- Env var: `NEXT_PUBLIC_BACKEND_URL` pointing to the Render backend URL.
+- Env var: `NEXT_PUBLIC_API_URL` pointing to the Render backend URL.
 - Build command: `bun run build` (Next.js auto-detected).
 - The Render URL is available after the backend service is deployed; set it in
   Vercel env vars before/after frontend deploy.
@@ -44,7 +44,7 @@ You are the deployment specialist for `aeo-engine`.
 | `GEMINI_API_KEY` | backend | Render secrets |
 | `SUPABASE_URL` | backend | Render secrets |
 | `SUPABASE_KEY` | backend | Render secrets |
-| `NEXT_PUBLIC_BACKEND_URL` | frontend | Vercel env vars |
+| `NEXT_PUBLIC_API_URL` | frontend | Vercel env vars |
 
 ## Deployment checklist
 

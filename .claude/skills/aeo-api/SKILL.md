@@ -11,7 +11,7 @@ how an evaluation flows through the system.
 ## Base
 
 - Backend runs at `http://localhost:8000` in dev (or the Render URL in prod).
-- The frontend reads `NEXT_PUBLIC_BACKEND_URL` from `.env.local`.
+- The frontend reads `NEXT_PUBLIC_API_URL` from `.env.local`.
 - All endpoints live in `backend/src/aeo_engine/main.py`.
 
 ## Endpoints
