@@ -19,6 +19,7 @@ from aeo_engine.database import (
     create_evaluation,
     get_classifications,
     get_evaluation,
+    get_grounding_sources_for_evaluation,
     get_metrics,
     get_responses,
     list_evaluations,
@@ -38,11 +39,12 @@ from aeo_engine.models import (
     ClassificationResult,
     Competitor,
     Evaluation,
+    GroundingSource,
     PromptRecord,
     PromptType,
 )
 from aeo_engine.prompts import generate_corpus, get_corpus_by_type
-from aeo_engine.sources import extract_sources, extract_supports
+from aeo_engine.sources import compute_source_impact, extract_sources, extract_supports
 
 logger = logging.getLogger(__name__)
 
@@ -277,10 +279,11 @@ async def get_evaluations() -> list[dict[str, Any]]:
 async def get_evaluation_detail(evaluation_id: str) -> dict[str, Any]:
     """Return everything recorded for one evaluation.
 
-    Four keys: `evaluation` (the run), `metrics` (win rate and Wilson interval
-    per prompt type per brand), `responses` (raw Gemini text, verbatim) and
-    `classifications` (one row per response per brand). Every metric can be
-    recomputed from the responses.
+    Keys: `evaluation` (the run), `metrics` (win rate and Wilson interval per
+    prompt type per brand), `responses` (raw Gemini text, verbatim),
+    `classifications` (one row per response per brand) and `source_impact`
+    (Source Auditor: cited domains ranked by co-occurrence with the focus
+    brand's DWR). Every metric can be recomputed from the responses.
     """
     evaluation = get_evaluation(evaluation_id)
     if not evaluation:
@@ -290,11 +293,22 @@ async def get_evaluation_detail(evaluation_id: str) -> dict[str, Any]:
     classifications = get_classifications(evaluation_id)
     metrics = get_metrics(evaluation_id)
 
+    source_rows = get_grounding_sources_for_evaluation(evaluation_id)
+    sources = [GroundingSource.model_validate(row) for row in source_rows]
+    response_map = {s.response_id: s.response_id for s in sources}
+    focus_classifications = [
+        ClassificationResult.model_validate(c)
+        for c in classifications
+        if c["brand"] == evaluation["brand"]
+    ]
+    impact_rows = compute_source_impact(sources, focus_classifications, response_map)
+
     return {
         "evaluation": evaluation,
         "metrics": metrics,
         "responses": responses,
         "classifications": classifications,
+        "source_impact": [row.model_dump(mode="json") for row in impact_rows],
     }
 
 

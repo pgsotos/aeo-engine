@@ -269,3 +269,89 @@ async def test_sample_and_store_persists_grounding_sources() -> None:
             (60, 120, 1),
         ]
         assert all(sp.response_id == "resp-1" for sp in supports)
+
+
+def test_get_evaluation_detail_includes_source_impact() -> None:
+    """The detail endpoint ranks cited domains by DWR co-occurrence for the
+    focus brand — scoping to the focus brand only, degrading to [] without
+    grounding data."""
+    source_rows = [
+        {
+            "id": "s1",
+            "response_id": "r1",
+            "web_title": "Linear Review | linear.app",
+            "domain": "linear.app",
+        },
+        {"id": "s2", "response_id": "r1", "web_title": "Compare on g2.com", "domain": "g2.com"},
+        {
+            "id": "s3",
+            "response_id": "r2",
+            "web_title": "Another linear.app page",
+            "domain": "linear.app",
+        },
+    ]
+    classification_rows = [
+        {
+            "response_id": "r1",
+            "brand": FOCUS_BRAND,
+            "classification": "direct_winner",
+            "first_mention_position": None,
+            "mention_count": 1,
+            "confidence_score": 0.9,
+        },
+        {
+            "response_id": "r2",
+            "brand": FOCUS_BRAND,
+            "classification": "alternative_mention",
+            "first_mention_position": None,
+            "mention_count": 1,
+            "confidence_score": 0.8,
+        },
+        # Competitor classification must NOT leak into the focus brand's impact.
+        {
+            "response_id": "r2",
+            "brand": "Jira",
+            "classification": "direct_winner",
+            "first_mention_position": None,
+            "mention_count": 1,
+            "confidence_score": 0.8,
+        },
+    ]
+    with (
+        patch(
+            "aeo_engine.main.get_evaluation",
+            return_value={"id": "eval-1", "brand": FOCUS_BRAND},
+        ),
+        patch("aeo_engine.main.get_responses", return_value=[]),
+        patch("aeo_engine.main.get_classifications", return_value=classification_rows),
+        patch("aeo_engine.main.get_metrics", return_value=[]),
+        patch("aeo_engine.main.get_grounding_sources_for_evaluation", return_value=source_rows),
+    ):
+        res = client.get("/api/evaluations/eval-1")
+
+    assert res.status_code == 200
+    payload = res.json()
+    # linear.app: 2 citations, r1 is a focus-brand direct winner, r2 is not → 1 win.
+    # g2.com: 1 citation, r1 direct winner → 1 win.
+    assert payload["source_impact"] == [
+        {"domain": "linear.app", "citations": 2, "direct_wins": 1, "impact_ratio": 0.5},
+        {"domain": "g2.com", "citations": 1, "direct_wins": 1, "impact_ratio": 1.0},
+    ]
+
+
+def test_get_evaluation_detail_source_impact_degrades_without_grounding() -> None:
+    """No grounding sources → source_impact is an empty list, never a crash."""
+    with (
+        patch(
+            "aeo_engine.main.get_evaluation",
+            return_value={"id": "eval-1", "brand": FOCUS_BRAND},
+        ),
+        patch("aeo_engine.main.get_responses", return_value=[]),
+        patch("aeo_engine.main.get_classifications", return_value=[]),
+        patch("aeo_engine.main.get_metrics", return_value=[]),
+        patch("aeo_engine.main.get_grounding_sources_for_evaluation", return_value=[]),
+    ):
+        res = client.get("/api/evaluations/eval-1")
+
+    assert res.status_code == 200
+    assert res.json()["source_impact"] == []

@@ -255,6 +255,31 @@ def get_grounding_supports(response_id: str) -> list[Row]:
     return _rows(result.data)
 
 
+def get_grounding_sources_for_evaluation(evaluation_id: str) -> list[Row]:
+    """Get all grounding sources for an evaluation.
+
+    Grounding sources don't have evaluation_id directly — join through
+    gemini_responses to filter by evaluation_id (mirrors get_classifications).
+    """
+    client = get_client()
+
+    resp_result = (
+        client.table("gemini_responses").select("id").eq("evaluation_id", evaluation_id).execute()
+    )
+    response_ids = [r["id"] for r in _rows(resp_result.data)]
+    if not response_ids:
+        return []
+
+    result = (
+        client.table("grounding_sources")
+        .select("*")
+        .in_("response_id", response_ids)
+        .order("created_at")
+        .execute()
+    )
+    return _rows(result.data)
+
+
 # ── Classifications ─────────────────────────────────────────────────────────
 
 
