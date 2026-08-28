@@ -1,5 +1,7 @@
 # aeo-engine
 
+*[Versión en español](README.es.md) · [Resumen de decisiones](DECISIONES.md)*
+
 Measures how often a brand is the **direct answer** Google Gemini gives when
 someone asks about a product category — Answer Engine Optimization (AEO), not
 broad web visibility (GEO).
@@ -58,7 +60,8 @@ aeo-engine/
 ├── CLAUDE.md            agent rules (Claude Code)
 ├── AGENTS.md            agent rules (Codex) — same content
 ├── DECISIONS.md         decision & scope log (decided / assumed / left out)
-└── OBJECTIVE.md         project scope and goals
+├── DECISIONES.md        resumen en español de las decisiones
+└── README.es.md         este README en español
 ```
 
 ## Requirements
