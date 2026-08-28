@@ -37,9 +37,27 @@ aeo-engine/
 | [uv](https://docs.astral.sh/uv/) | backend Python env + packages | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
 | [Bun](https://bun.sh) | frontend package manager + runtime | `curl -fsSL https://bun.sh/install \| bash` |
 
-## Setup
+## Run it locally
 
-### Backend
+### Docker (one command)
+
+```bash
+cd backend && cp .env.example .env    # fill in GEMINI_API_KEY, SUPABASE_URL, SUPABASE_KEY
+cd .. && docker compose up --build
+```
+
+- frontend → http://localhost:3000
+- backend  → http://localhost:8000 (OpenAPI docs at `/docs`)
+
+The database is hosted Supabase, so there is no local Postgres container — the
+containers talk to your Supabase project using the credentials in
+`backend/.env`. To point the frontend at a different backend, set
+`NEXT_PUBLIC_API_URL` before `docker compose build` (it is inlined at build
+time).
+
+### Without Docker
+
+**Backend**
 
 ```bash
 cd backend
@@ -49,18 +67,18 @@ uv run uvicorn aeo_engine.main:app --reload
 # API at http://localhost:8000
 ```
 
-### Database (Supabase)
-
-The project uses hosted Supabase. Schema is in `migrations/001_initial_schema.sql`.
-Run it in the Supabase SQL editor.
-
-### Frontend
+**Frontend**
 
 ```bash
 cd frontend
 bun install
 bun run dev              # http://localhost:3000
 ```
+
+**Database (Supabase)**
+
+Hosted Supabase. The schema is in `migrations/001_initial_schema.sql` — run it
+once in the Supabase SQL editor.
 
 ## API Endpoints
 
