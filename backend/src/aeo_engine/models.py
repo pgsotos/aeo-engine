@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -44,7 +45,9 @@ class GeminiResponse(BaseModel):
     run_index: int = Field(ge=1)
     model_id: str
     raw_text: str
-    grounding_metadata: dict | None = None  # Google Search grounding; None when absent (stochastic)
+    grounding_metadata: dict[str, Any] | None = (
+        None  # Google Search grounding; None when absent (stochastic)
+    )
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
