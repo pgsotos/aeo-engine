@@ -36,11 +36,19 @@ we take that seriously.
 
 | Component | Status |
 |---|---|
-| Backend (FastAPI + Gemini) | ✅ Working, tested |
-| Supabase schema | ✅ 4 tables created |
-| Gemini connection | ✅ Verified with live API |
-| Frontend dashboard | 🔲 In progress |
-| Deployment | 🔲 Pending |
+| Backend (FastAPI + Gemini) | ✅ Deployed on Render, 12 tests passing |
+| Supabase schema | ✅ 4 tables, `gemini_responses` append-only |
+| Gemini connection | ✅ Live, `gemini-3.6-flash` |
+| Frontend dashboard | ✅ Deployed on Vercel — heatmap, CI bars, response drill-down |
+| Deployment | ✅ Public URLs, autodeploy from `main` |
+| Local run | ✅ `docker compose up` |
+
+**Live:** dashboard at <https://aeo-engine-pgsotos.vercel.app>,
+API at <https://aeo-engine-35ii.onrender.com> (`/docs` for OpenAPI).
+
+The engine is generic — any brand and category can be evaluated, with
+competitors resolved by Gemini. 16 evaluations across 14 brands and 8
+categories have been run against the live API.
 
 ## Stack
 
