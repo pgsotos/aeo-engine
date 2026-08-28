@@ -1,0 +1,14 @@
+# Codex MCP servers for this project.
+#
+# Copy to `.codex/config.toml` and fill in the real values. That file is
+# git-ignored because it holds credentials — never commit it.
+#
+# The Render MCP server is the `render-mcp-server` binary from
+# github.com/render-oss/render-mcp-server; create an API key in the Render
+# dashboard under Account Settings → API Keys.
+
+[mcp_servers.render]
+command = "/absolute/path/to/render-mcp-server"
+
+[mcp_servers.render.env]
+RENDER_API_KEY = "rnd_your_render_api_key"
