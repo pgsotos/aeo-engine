@@ -937,9 +937,11 @@ empty — the only reliable attribution signal is `grounding_chunks[].web.title`
 **Consequences:** Brand-level DWR gains a causal companion — the Source Impact
 matrix — answering "which sources drive wins and which drain them". Cost: one
 fractional column + two tables (negligible), ~30% of responses have nothing to
-attribute (documented stochasticity, see ASM-003). Impact rows are not yet
-exposed by any API or dashboard endpoint (frontend deferred within this Slice);
-the Source Auditor is the foundational work unit the API surface will build on.
+attribute (documented stochasticity, see ASM-003). Impact rows ship end to end:
+`GET /api/evaluations/{id}` returns them as `source_impact`, and the dashboard
+renders them in the Source Auditor panel. Against `gemini-3.6-flash` that panel
+is empty in practice — the model returns no grounding chunks at all, so there is
+nothing to attribute. ADR-026 records that measurement and its revisit trigger.
 
 ---
 
