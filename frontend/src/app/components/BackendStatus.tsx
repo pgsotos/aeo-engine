@@ -29,10 +29,19 @@ export default function BackendStatus({ health }: BackendStatusProps) {
     );
   }
 
-  if (!health.geminiConfigured) {
+  const missing = [
+    !health.geminiConfigured && "GEMINI_API_KEY",
+    !health.supabaseConfigured && "SUPABASE_URL / SUPABASE_KEY",
+  ].filter(Boolean) as string[];
+
+  if (missing.length > 0) {
     return (
       <div className="mb-6 rounded-lg border border-yellow-800/50 bg-yellow-900/20 px-4 py-3 text-sm text-yellow-300">
-        Backend connected but Gemini API key is not configured.
+        Backend is up, but {missing.join(" and ")}{" "}
+        {missing.length > 1 ? "are" : "is"} not configured. Add{" "}
+        {missing.length > 1 ? "them" : "it"} to{" "}
+        <span className="font-mono">backend/.env</span> and restart — see the
+        README for where to get {missing.length > 1 ? "them" : "it"}.
       </div>
     );
   }

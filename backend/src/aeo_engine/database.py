@@ -18,10 +18,36 @@ from aeo_engine.models import (
 _client: Client | None = None
 
 
+_SETUP_HINT = """
+Supabase is not configured. Set these in backend/.env (see .env.example):
+
+  SUPABASE_URL=https://<your-project>.supabase.co
+  SUPABASE_KEY=<anon public key>
+
+Create a free project at https://supabase.com/dashboard, run
+migrations/001_initial_schema.sql in its SQL Editor, then copy the Project URL
+and the anon public key from Project Settings -> API.
+"""
+
+
 def get_client() -> Client:
-    """Get or create the Supabase client (singleton)."""
+    """Get or create the Supabase client (singleton).
+
+    Raises with setup instructions when the credentials are missing, rather
+    than letting the underlying client fail on an empty URL.
+    """
     global _client
     if _client is None:
+        missing = [
+            name
+            for name, value in (
+                ("SUPABASE_URL", settings.supabase_url),
+                ("SUPABASE_KEY", settings.supabase_key),
+            )
+            if not value
+        ]
+        if missing:
+            raise RuntimeError(f"Missing {' and '.join(missing)}.\n{_SETUP_HINT}")
         _client = create_client(settings.supabase_url, settings.supabase_key)
     return _client
 

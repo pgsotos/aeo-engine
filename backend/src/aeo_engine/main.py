@@ -81,10 +81,11 @@ class EvaluateRequest(BaseModel):
 
 
 class HealthResponse(BaseModel):
-    """Liveness plus whether the Gemini key is configured."""
+    """Liveness, plus whether each required credential is present."""
 
     status: str
     gemini_configured: bool
+    supabase_configured: bool
 
 
 class CategoriesResponse(BaseModel):
@@ -193,7 +194,9 @@ async def health() -> HealthResponse:
     (see ADR-016); `/health` remains for server-side uptime pingers.
     """
     return HealthResponse(
-        status="ok", gemini_configured=bool(settings.gemini_api_key)
+        status="ok",
+        gemini_configured=bool(settings.gemini_api_key),
+        supabase_configured=bool(settings.supabase_url and settings.supabase_key),
     )
 
 

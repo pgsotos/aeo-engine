@@ -70,46 +70,79 @@ aeo-engine/
 
 ## Run it locally
 
-### Docker (one command)
+> **You do not need to run anything to see the results.** The deployed
+> dashboard above holds seventeen finished evaluations. Run it locally only to
+> read the code with the app in front of you, or to evaluate your own brand.
 
-```bash
-cd backend && cp .env.example .env    # fill in GEMINI_API_KEY, SUPABASE_URL, SUPABASE_KEY
-cd .. && docker compose up --build
-```
+Running it needs two credentials of your own: a **Gemini API key** (the engine
+being measured) and a **Supabase project** (where responses are stored). Both
+have free tiers. Setting them up takes about ten minutes.
 
-- frontend → http://localhost:3000
-- backend  → http://localhost:8000 (OpenAPI docs at `/docs`)
+### 1. Gemini API key
 
-The database is hosted Supabase, so there is no local Postgres container — the
-containers talk to your Supabase project using the credentials in
-`backend/.env`. To point the frontend at a different backend, set
-`NEXT_PUBLIC_API_URL` before `docker compose build` (it is inlined at build
-time).
+Create one at <https://aistudio.google.com/apikey>. The free tier is enough —
+one evaluation is 160 requests to `gemini-3.6-flash`.
 
-### Without Docker
+### 2. Supabase project
 
-**Backend**
+1. Create a project at <https://supabase.com/dashboard> (free tier).
+2. **SQL Editor** → **New query** → paste the whole of
+   `migrations/001_initial_schema.sql` → **Run**. This creates the four tables
+   (`evaluations`, `gemini_responses`, `classifications`, `metrics`).
+3. **Project Settings → API** → copy the **Project URL** and the **anon public**
+   key.
+
+Only the backend talks to Supabase; the browser never does.
+
+### 3. Fill in the environment
 
 ```bash
 cd backend
-cp .env.example .env     # add your GEMINI_API_KEY
-uv sync
-uv run uvicorn aeo_engine.main:app --reload
-# API at http://localhost:8000
+cp .env.example .env      # then edit it
 ```
 
-**Frontend**
+```bash
+SUPABASE_URL=https://<your-project>.supabase.co
+SUPABASE_KEY=<anon public key>
+GEMINI_API_KEY=<your Gemini key>
+SAMPLING_N=8
+```
+
+### 4. Start it
+
+```bash
+docker compose up --build     # from the repository root
+```
+
+- frontend → <http://localhost:3000>
+- backend → <http://localhost:8000> (OpenAPI docs at `/docs`)
+
+Your database starts empty, so "Past Evaluations" is empty: type a brand,
+resolve its category and competitors, and run one. It takes about two minutes.
+
+There is no local Postgres container — the containers use the hosted Supabase
+project from `backend/.env` (see ADR-005 and ADR-019 for why). To point the
+frontend at a different backend, set `NEXT_PUBLIC_API_URL` before
+`docker compose build`; Next.js inlines it at build time.
+
+### Without Docker
+
+Same credentials as above — steps 1 to 3 still apply. Then, in two terminals:
+
+```bash
+cd backend
+uv sync
+uv run uvicorn aeo_engine.main:app --reload    # http://localhost:8000
+```
 
 ```bash
 cd frontend
 bun install
-bun run dev              # http://localhost:3000
+bun run dev                                    # http://localhost:3000
 ```
 
-**Database (Supabase)**
-
-Hosted Supabase. The schema is in `migrations/001_initial_schema.sql` — run it
-once in the Supabase SQL editor.
+The frontend defaults to `http://localhost:8000`, so no frontend `.env` is
+needed for local work.
 
 ## API
 
