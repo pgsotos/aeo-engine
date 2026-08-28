@@ -203,6 +203,15 @@ concurrencia hace que pase menos seguido; sólo la reanudación lo vuelve
 recuperable cuando pasa. El ADR dice qué habría que construir y por qué no se
 construyó ahora. Mitigación disponible hoy: correr las evaluaciones de a una.
 
+El ADR también deja medidos los umbrales para que el dashboard avise, en vez de
+dejar al usuario mirando un spinner eterno. Sobre 26 evaluaciones completas: con
+N = 8 la mediana es **218 s** y la más lenta real **504 s**; con N = 4, 75 s. El
+umbral tiene que derivarse de `sampling_n`, no ser una constante. Y hacen falta
+**dos**, porque equivocarse cuesta distinto: avisar temprano que algo tarda sólo
+genera una preocupación innecesaria, mientras que declarar muerta una corrida
+viva invita a abandonarla. De paso, la medición corrige al propio ADR-027: su
+margen real es 1.2×, no "varias veces" como dice ahí.
+
 ## Lo que se dejó afuera
 
 **Otros motores** (OOS-002). Solo Gemini. Cada motor tiene una forma de

@@ -1389,9 +1389,62 @@ scoring its partial output. The success path did the opposite. The two are now
 consistent in intent and inconsistent in behaviour, which is exactly what this
 entry exists to flag.
 
-**Revisit trigger:** a second partial run appearing, or any use of the metric
-where cross-evaluation comparison matters — at which point honest status stops
-being debt and becomes a correctness requirement.
+### When is a run late, and when is it dead? — the numbers for the UI
+
+The dashboard should say something before a user stares at a spinner that will
+never resolve. Two thresholds are needed, not one, because **the cost of being
+wrong differs by an order of magnitude**:
+
+- **Being early with a warning** costs a moment of unnecessary concern on a run
+  that finishes. Cheap. This threshold can be aggressive.
+- **Being early with "this is dead"** invites the user to abandon or restart a
+  live run. Expensive. This one must be conservative.
+
+**Measured, not guessed** — 26 complete evaluations in the stored data:
+
+| | N = 4 (80 calls) | N = 8 (160 calls) |
+|---|---|---|
+| Median duration | 75 s | **218 s** (3.6 min) |
+| Slowest observed | 90 s | **504 s** (8.4 min) |
+
+Duration does not scale linearly with N — concurrency saturates — so the
+threshold must be **derived from `sampling_n`**, not a constant. A constant tuned
+for N = 8 would leave an N = 4 run looking healthy for four times its own
+runtime.
+
+**Proposed thresholds:**
+
+1. **"This is taking longer than usual"** at roughly **2× the median for that
+   N** — about 7 minutes at N = 8, 2.5 minutes at N = 4. Informational, no
+   button, no alarm. It fires on the slowest observed real run, which is the
+   point: that run *was* unusually slow, and saying so is accurate.
+2. **"This run stopped" + Resume** only once the backend agrees. The sweep
+   (ADR-027) marks a silent run `failed`, and the dashboard already receives
+   `heartbeat_at` in the evaluation list — no API change is needed to compute
+   the same thing client-side. Tying the button to the backend's own verdict
+   keeps one definition of dead instead of two that can disagree.
+
+**A correction to ADR-027, from this measurement.** That entry justifies its
+10-minute sweep as "several times the worst realistic gap between heartbeats".
+The data does not support the phrasing: the slowest complete run took 504 s
+against a 600 s threshold, and a live run was observed silent for **304 s** —
+a margin of 1.2× on duration and 2.0× on the gap, not "several times". The
+threshold has not misfired, but it is tighter than documented.
+
+The better fix is not a larger number: it is **a more frequent heartbeat**.
+Today it is touched once per completed prompt, and the twenty prompts run
+concurrently under one semaphore, so they finish in bursts and the last few
+leave a long quiet tail. Touching it per stored response batch would shrink the
+gaps, keep 10 minutes genuinely conservative, and make the UI's "stopped"
+signal trustworthy enough to hang a Resume button on.
+
+**Not implemented here** — this section exists so the numbers are on record and
+the next person does not have to re-derive them.
+
+**Revisit trigger:** a second partial run appearing, any use of the metric where
+cross-evaluation comparison matters, or a complete run taking longer than the
+sweep threshold — at which point honest status stops being debt and becomes a
+correctness requirement.
 
 ---
 
