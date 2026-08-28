@@ -18,9 +18,11 @@ _MAX_RETRIES = 3
 _RETRY_BASE_DELAY = 1.0  # seconds; grows 3x per attempt
 
 # Residue defense for category resolves: the low token cap can truncate an
-# answer mid-sentence, leaking meta-language like "Select the…". Keep the set
-# small and conservative — a real category must never be rejected here (Retry
-# is the recovery path when a legit token is over-aggressively dropped).
+# answer mid-sentence, leaking meta-language like "Select the…", and a model
+# may regurgitate parts of the instruction itself ("no quotes", "lowercase").
+# Keep the set small and conservative — a real category must never be rejected
+# here (Retry is the recovery path when a legit token is over-aggressively
+# dropped).
 _META_BLACKLIST = (
     "select",
     "please",
@@ -30,22 +32,41 @@ _META_BLACKLIST = (
     "such as",
     "examples include",
     "for example",
+    "e.g.",
+    "quotes",
+    "lowercase",
+    "nothing else",
+    "comma-separated",
+    "comma separated",
+    "list of categories",
+    "brand name",
+    "bullets",
 )
 _MAX_CATEGORY_LEN = 50
 
 
-def _clean_categories(raw: str, *, max_len: int = _MAX_CATEGORY_LEN) -> list[str]:
+def _clean_categories(
+    raw: str,
+    *,
+    max_len: int = _MAX_CATEGORY_LEN,
+    brand: str | None = None,
+) -> list[str]:
     """Split a Gemini category response and drop meta-language/truncation residue.
 
     Pure function: strips surrounding whitespace/quotes, filters empty chunks,
     drops anything containing a conservative meta-language token, and caps each
-    category's length. No hidden state, no I/O.
+    category's length. When ``brand`` is given, a chunk that is exactly the brand
+    name echoed back (case-insensitive) is dropped too — lookalike categories
+    such as "linear algebra" survive. No hidden state, no I/O.
     """
     categories: list[str] = []
+    focus = brand.lower() if brand is not None else None
     for chunk in raw.split(","):
         cleaned = chunk.strip().strip('"').strip("'")
         lowered = cleaned.lower()
         if not cleaned or any(token in lowered for token in _META_BLACKLIST):
+            continue
+        if focus is not None and lowered == focus:
             continue
         categories.append(cleaned[:max_len])
     return categories
@@ -150,12 +171,13 @@ async def resolve_brand_categories(brand: str) -> list[str]:
     """
 
     prompt = (
-        f'What product or service categories does the brand "{brand}" belong to? '
-        "Return ONLY a comma-separated list of categories, nothing else. "
-        "Use lowercase. For example: "
-        '"Linear" -> "project management, issue tracking, team collaboration" '
-        '"Sony" -> "televisions, audio equipment, cameras, gaming consoles" '
-        '"Notion" -> "note-taking, project management, documentation, knowledge base"'
+        f'What product or service categories does the brand "{brand}" belong to?\n'
+        "Respond with ONLY a comma-separated list of category names.\n"
+        "Do not include quotes, bullets, numbering, examples, explanations, or "
+        "the brand name itself. Use lowercase.\n"
+        "Output format: category1, category2, category3\n"
+        "For a brand like Notion, the entire answer must be exactly:\n"
+        "note-taking, project management, documentation, knowledge base"
     )
 
     def _sync_call() -> str:
@@ -173,8 +195,9 @@ async def resolve_brand_categories(brand: str) -> list[str]:
     raw = await asyncio.to_thread(_sync_call)
 
     # Parse + clean the comma-separated response: drop meta-language/truncation
-    # residue and cap each category's length.
-    return _clean_categories(raw)
+    # residue and cap each category's length. Pass the focus brand so an exact
+    # echo of the brand name is never mistaken for a category.
+    return _clean_categories(raw, brand=brand)
 
 
 async def resolve_brand_competitors(brand: str, category: str) -> list[Competitor]:

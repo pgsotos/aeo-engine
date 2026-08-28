@@ -49,6 +49,15 @@ async def test_call_gemini_returns_response() -> None:
         ),
         # A chunk matching a blacklisted token mid-string is dropped too.
         ("here are the options, video editing", ["video editing"]),
+        # Instruction regurgitation: the model echoes the prompt instead of
+        # returning categories ("no quotes", "lowercase", "nothing else", ...).
+        ("no quotes", []),
+        ('"no quotes", project management', ["project management"]),
+        ("lowercase, issue tracking", ["issue tracking"]),
+        ("nothing else, note-taking", ["note-taking"]),
+        ("comma-separated list of categories, video editing", ["video editing"]),
+        ("return the brand name, project management", ["project management"]),
+        ("e.g. linear algebra, note-taking", ["note-taking"]),
         # Empty input yields no categories.
         ("", []),
         # Whitespace-only input yields no categories.
@@ -58,6 +67,26 @@ async def test_call_gemini_returns_response() -> None:
 def test_clean_categories_drops_meta_language(raw: str, expected: list[str]) -> None:
     """Meta-language/truncation tokens must never surface as selectable categories."""
     assert _clean_categories(raw) == expected
+
+
+def test_clean_categories_drops_echoed_brand() -> None:
+    """A brand name echoed back as a 'category' is dropped — exact match only,
+    so lookalike categories like "linear algebra" survive."""
+    assert _clean_categories('"Linear", project management', brand="Linear") == [
+        "project management",
+    ]
+    assert _clean_categories("Linear", brand="Linear") == []
+    assert _clean_categories("linear algebra, note-taking", brand="Linear") == [
+        "linear algebra",
+        "note-taking",
+    ]
+    assert _clean_categories("linear algebra", brand="Linear") == ["linear algebra"]
+
+
+def test_clean_categories_brand_filter_is_opt_in() -> None:
+    """Without a brand argument the exact-name chunk is kept — the filter is an
+    explicit opt-in, so callers that don't know the brand never lose a category."""
+    assert _clean_categories("Linear") == ["Linear"]
 
 
 def test_clean_categories_caps_length() -> None:
