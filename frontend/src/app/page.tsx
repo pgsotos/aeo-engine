@@ -194,14 +194,34 @@ export default function DashboardPage() {
     try {
       setRunning(true);
       setError(null);
-      await runEvaluation(request);
+      // The backend runs the evaluation in the background and returns
+      // immediately; poll the list until this run finishes.
+      const { evaluation_id } = await runEvaluation(request);
       await loadEvaluations();
+
+      const deadline = Date.now() + 15 * 60_000;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 5_000));
+        const evals = await fetchEvaluations();
+        setEvaluations(evals);
+        const mine = evals.find((e) => e.id === evaluation_id);
+        if (mine && mine.status !== "running") {
+          if (mine.status === "completed") {
+            setSelectedId(evaluation_id);
+            await loadDetail(evaluation_id);
+          } else {
+            setError("Evaluation failed — check the backend logs.");
+          }
+          return;
+        }
+      }
+      setError("Evaluation is taking longer than expected; check back later.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to run evaluation");
     } finally {
       setRunning(false);
     }
-  }, [brand, category, competitors, loadEvaluations]);
+  }, [brand, category, competitors, loadEvaluations, loadDetail]);
 
   // Metrics for the focus brand
   const focusMetrics = useMemo(() => {
